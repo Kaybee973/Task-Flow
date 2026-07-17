@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <!--
+    Go: inject task title into <title>
+    e.g. fmt.Fprintf(w, "<title>%s — Taskr</title>", task.Title)
+    or use html/template: {{.Task.Title}} — Taskr
+  -->
+  <title>Task Detail — Taskr</title>
+  <link rel="icon" href="/static/images/logo.svg" type="image/svg+xml"/>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container">
+    <a href="/dashboard" class="navbar-brand"><span>Task</span>r</a>
+    <div class="navbar-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/tasks" class="nav-link active">Tasks</a>
+      <a href="/upload" class="nav-link">Files</a>
+    </div>
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <div class="nav-avatar" onclick="location.href='/profile'">JD</div>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="dashboard-layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Menu</div>
+      <a href="/dashboard" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </a>
+      <a href="/tasks" class="sidebar-link active">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
+        All Tasks
+        <span class="badge">12</span>
+      </a>
+    </div>
+    <div style="margin-top:auto;">
+      <a href="/profile" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile & Settings
+      </a>
+    </div>
+  </aside>
+
+  <main class="main-content">
+
+    <!-- Breadcrumb -->
+    <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:1.5rem; font-size:.875rem; color:var(--muted);">
+      <a href="/tasks" style="color:var(--muted);">Tasks</a>
+      <span>›</span>
+      <!-- Go: inject task title: {{.Task.Title}} -->
+      <span style="color:var(--text);">Set up Go HTTP server with routing</span>
+
+      <!-- Dynamic route pill — shows current URL pattern -->
+      <span class="route-pill" style="margin-left:.5rem;">
+        <span class="method">GET</span>/tasks/{id}
+      </span>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 300px; gap:1.5rem; align-items:start;">
+
+      <!-- Main content -->
+      <div>
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.5rem; gap:1rem;">
+          <div>
+            <!-- Go: {{.Task.Title}} -->
+            <h1 style="font-size:1.5rem; font-weight:800; line-height:1.3;">
+              Set up Go HTTP server with routing
+            </h1>
+            <div style="display:flex; gap:.75rem; margin-top:.65rem; flex-wrap:wrap; align-items:center;">
+              <span class="badge badge-inprogress">In Progress</span>
+              <span class="badge badge-high">High Priority</span>
+              <span class="badge badge-tag">backend</span>
+              <span class="text-xs text-muted">Created Apr 5, 2026</span>
+            </div>
+          </div>
+
+          <!-- Go: POST /tasks/{id} with updated fields -->
+          <div style="display:flex; gap:.5rem; flex-shrink:0;">
+            <button class="btn btn-ghost btn-sm" data-modal-open="edit-task-modal">Edit</button>
+            <!-- Go: POST /tasks/{id}/delete → redirect /tasks -->
+            <form method="POST" action="/tasks/1/delete" style="margin:0;">
+              <input type="hidden" name="csrf_token" value="REPLACE_WITH_TOKEN"/>
+              <button type="submit" class="btn btn-danger btn-sm"
+                      onclick="return confirm('Delete this task?')">Delete</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="card mb-2">
+          <div class="card-header">
+            <h3 class="card-title">Description</h3>
+          </div>
+          <!-- Go: {{.Task.Description}} -->
+          <p style="color:var(--muted); font-size:.95rem; line-height:1.75;">
+            Configure a Go HTTP server using <code style="background:var(--surface2); padding:.1rem .35rem; border-radius:4px; font-family:var(--mono); font-size:.85rem;">net/http</code>.
+            Define routes for all task CRUD operations. Implement a router that handles
+            dynamic path segments like <code style="background:var(--surface2); padding:.1rem .35rem; border-radius:4px; font-family:var(--mono); font-size:.85rem;">/tasks/{id}</code>
+            and dispatches to the correct handler based on HTTP method (GET, POST).
+            Serve the static folder at <code style="background:var(--surface2); padding:.1rem .35rem; border-radius:4px; font-family:var(--mono); font-size:.85rem;">/static/</code>.
+          </p>
+        </div>
+
+        <!-- Attachments — File upload section -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Attachments</h3>
+            <span class="text-xs text-muted">Max 10 MB per file</span>
+          </div>
+
+          <!--
+            Go: POST /tasks/{id}/attachments
+            Use r.ParseMultipartForm(10 << 20)
+            file, header, err := r.FormFile("attachment")
+          -->
+          <form method="POST" action="/tasks/1/attachments" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="REPLACE_WITH_TOKEN"/>
+            <div class="upload-zone">
+              <input type="file" name="attachment" multiple accept="image/*,.pdf,.txt,.md"/>
+              <div class="upload-icon">📎</div>
+              <div class="upload-label">Drop files here or click to browse</div>
+              <div class="upload-hint">PNG, JPG, PDF, TXT, MD up to 10 MB</div>
+            </div>
+            <div class="file-list"></div>
+            <button type="submit" class="btn btn-ghost btn-sm mt-2" style="display:none;">Upload</button>
+          </form>
+
+          <!-- Existing attachments — Go: range {{.Task.Attachments}} -->
+          <div class="file-list mt-2">
+            <div class="file-item">
+              <span class="file-icon">📄</span>
+              <span class="file-name">router-design.md</span>
+              <span class="file-size">4.2 KB</span>
+              <!-- Go: GET /tasks/{id}/attachments/{filename} → serve file -->
+              <a href="/tasks/1/attachments/router-design.md" class="btn btn-ghost btn-sm">⬇</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar details -->
+      <div style="display:flex; flex-direction:column; gap:1rem;">
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:1rem;">Details</div>
+          <div style="display:flex;flex-direction:column;gap:.85rem;">
+
+            <div>
+              <div class="text-xs text-muted" style="margin-bottom:.3rem;">STATUS</div>
+              <!-- Go: POST /tasks/{id}/status → update status field only -->
+              <select class="form-control" name="status" style="font-size:.85rem; padding:.4rem .75rem;"
+                      onchange="this.form && this.form.submit()">
+                <option value="todo">To Do</option>
+                <option value="inprogress" selected>In Progress</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+
+            <div>
+              <div class="text-xs text-muted" style="margin-bottom:.3rem;">PRIORITY</div>
+              <span class="badge badge-high">High</span>
+            </div>
+
+            <div>
+              <div class="text-xs text-muted" style="margin-bottom:.3rem;">DUE DATE</div>
+              <!-- Go: {{.Task.DueDate.Format("Jan 2, 2006")}} -->
+              <span class="text-sm">April 10, 2026</span>
+            </div>
+
+            <div>
+              <div class="text-xs text-muted" style="margin-bottom:.3rem;">PROJECT</div>
+              <!-- Go: {{.Task.Project.Name}} linked to /projects/{id} -->
+              <a href="/projects/1" class="text-sm text-accent">Backend API</a>
+            </div>
+
+            <div>
+              <div class="text-xs text-muted" style="margin-bottom:.3rem;">ASSIGNED TO</div>
+              <div style="display:flex;align-items:center;gap:.5rem;">
+                <div class="nav-avatar" style="width:26px;height:26px;font-size:.7rem;">JD</div>
+                <span class="text-sm">Jane Doe</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Go routes reference for this page -->
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.85rem; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);">Routes on this page</div>
+          <div style="display:flex;flex-direction:column;gap:.4rem;">
+            <span class="route-pill"><span class="method">GET</span>/tasks/{id}</span>
+            <span class="route-pill"><span class="method">POST</span>/tasks/{id}</span>
+            <span class="route-pill"><span class="method">POST</span>/tasks/{id}/delete</span>
+            <span class="route-pill"><span class="method">POST</span>/tasks/{id}/attachments</span>
+            <span class="route-pill"><span class="method">GET</span>/tasks/{id}/attachments/{file}</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Edit Task Modal -->
+<div class="modal-overlay" id="edit-task-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">Edit Task</h3>
+      <button class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Go: POST /tasks/{id} → update record -->
+      <form method="POST" action="/tasks/1">
+        <input type="hidden" name="csrf_token" value="REPLACE_WITH_TOKEN"/>
+        <div class="form-group">
+          <label>Title</label>
+          <!-- Go: value="{{.Task.Title}}" -->
+          <input class="form-control" type="text" name="title"
+                 value="Set up Go HTTP server with routing" required/>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea class="form-control" name="description" rows="3">Configure a Go HTTP server using net/http...</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+          <div class="form-group">
+            <label>Priority</label>
+            <select class="form-control" name="priority">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high" selected>High</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Due date</label>
+            <input class="form-control" type="date" name="due_date" value="2026-04-10"/>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:0;border:none;margin-top:1rem;">
+          <button type="button" class="btn btn-ghost" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

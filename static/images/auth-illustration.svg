@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300">
+  <!-- Background circles -->
+  <circle cx="150" cy="150" r="130" fill="#1d2130" opacity="0.5"/>
+  <circle cx="150" cy="150" r="90" fill="#151820" stroke="#262c3e" stroke-width="1"/>
+  <!-- Grid lines -->
+  <line x1="60" y1="150" x2="240" y2="150" stroke="#262c3e" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="150" y1="60" x2="150" y2="240" stroke="#262c3e" stroke-width="1" stroke-dasharray="4,4"/>
+  <!-- Task cards floating -->
+  <rect x="75" y="95" width="90" height="40" rx="8" fill="#1d2130" stroke="#5b7fff" stroke-width="1"/>
+  <rect x="82" y="106" width="40" height="5" rx="2" fill="#5b7fff"/>
+  <rect x="82" y="116" width="65" height="4" rx="2" fill="#262c3e"/>
+  <rect x="135" y="165" width="90" height="40" rx="8" fill="#1d2130" stroke="#4ecb71" stroke-width="1"/>
+  <rect x="142" y="176" width="40" height="5" rx="2" fill="#4ecb71"/>
+  <rect x="142" y="186" width="55" height="4" rx="2" fill="#262c3e"/>
+  <!-- Check circle -->
+  <circle cx="150" cy="150" r="20" fill="#5b7fff"/>
+  <path d="M142 150l5 5 11-10" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

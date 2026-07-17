@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>File Uploads — Taskr</title>
+  <link rel="icon" href="/static/images/logo.svg" type="image/svg+xml"/>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container">
+    <a href="/dashboard" class="navbar-brand"><span>Task</span>r</a>
+    <div class="navbar-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/tasks" class="nav-link">Tasks</a>
+      <a href="/upload" class="nav-link active">Files</a>
+    </div>
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <div class="nav-avatar" onclick="location.href='/profile'">JD</div>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="dashboard-layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Menu</div>
+      <a href="/dashboard" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </a>
+      <a href="/tasks" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
+        All Tasks
+      </a>
+      <a href="/upload" class="sidebar-link active">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        File Uploads
+      </a>
+    </div>
+    <div style="margin-top:auto;">
+      <a href="/profile" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile & Settings
+      </a>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div id="alert-zone"></div>
+
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">File Uploads</h1>
+        <p class="page-subtitle">Attach files to your tasks and projects.</p>
+      </div>
+      <span class="route-pill">
+        <span class="method">POST</span>/upload — multipart/form-data
+      </span>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 340px; gap:1.5rem; align-items:start;">
+
+      <!-- Upload form -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Upload files</h3>
+          </div>
+
+          <!--
+            Go handler: POST /upload
+            r.ParseMultipartForm(32 << 20)  // 32 MB max memory
+            files := r.MultipartForm.File["files"]
+            for _, fh := range files {
+              f, _ := fh.Open()
+              defer f.Close()
+              dst, _ := os.Create("./uploads/" + fh.Filename)
+              io.Copy(dst, f)
+            }
+          -->
+          <form method="POST" action="/upload" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="REPLACE_WITH_TOKEN"/>
+
+            <div class="form-group">
+              <label for="upload-task">Attach to task (optional)</label>
+              <!-- Go: populate from DB: range {{.Tasks}} -->
+              <select class="form-control" id="upload-task" name="task_id">
+                <option value="">— Not attached to a task —</option>
+                <option value="1">Set up Go HTTP server</option>
+                <option value="2">Implement session auth</option>
+                <option value="4">File upload handler</option>
+              </select>
+            </div>
+
+            <div class="upload-zone">
+              <input type="file" name="files" id="file-input" multiple
+                     accept="image/*,.pdf,.txt,.md,.zip,.go"/>
+              <div class="upload-icon">☁️</div>
+              <div class="upload-label">Drop files here or click to browse</div>
+              <div class="upload-hint">Any file type · Max 10 MB each · Multiple files OK</div>
+            </div>
+
+            <div class="file-list" id="file-preview"></div>
+
+            <div style="margin-top:1.25rem; display:flex; gap:.75rem; justify-content:flex-end;">
+              <button type="reset" class="btn btn-ghost"
+                      onclick="document.getElementById('file-preview').innerHTML=''">Clear</button>
+              <button type="submit" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M20 21H4"/></svg>
+                Upload files
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Info panel -->
+      <div style="display:flex;flex-direction:column;gap:1rem;">
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.85rem;">Go code snippet</div>
+          <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; font-family:var(--mono); font-size:.75rem; color:var(--muted); overflow-x:auto; line-height:1.7;"><code><span style="color:#5b7fff">func</span> <span style="color:#4ecb71">uploadHandler</span>(w http.ResponseWriter, r *http.Request) {
+  <span style="color:var(--muted)">// limit total body</span>
+  r.Body = http.MaxBytesReader(w, r.Body, 32&lt;&lt;20)
+
+  <span style="color:#5b7fff">if</span> err := r.ParseMultipartForm(10&lt;&lt;20); err != nil {
+    http.Error(w, err.Error(), 400)
+    <span style="color:#5b7fff">return</span>
+  }
+
+  files := r.MultipartForm.File[<span style="color:#f4c542">"files"</span>]
+  <span style="color:#5b7fff">for</span> _, fh := <span style="color:#5b7fff">range</span> files {
+    f, _ := fh.Open()
+    <span style="color:#5b7fff">defer</span> f.Close()
+    dst, _ := os.Create(<span style="color:#f4c542">"./uploads/"</span> + fh.Filename)
+    io.Copy(dst, f)
+  }
+}</code></pre>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.85rem; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);">Routes on this page</div>
+          <div style="display:flex;flex-direction:column;gap:.4rem;">
+            <span class="route-pill"><span class="method">GET</span>/upload</span>
+            <span class="route-pill"><span class="method">POST</span>/upload</span>
+            <span class="route-pill"><span class="method">GET</span>/uploads/{filename}</span>
+            <span class="route-pill"><span class="method">POST</span>/uploads/{filename}/delete</span>
+          </div>
+        </div>
+
+        <div class="alert alert-info">
+          <span>ℹ</span>
+          <span>Set <code style="font-family:var(--mono)">enctype="multipart/form-data"</code> on the form so Go's <code style="font-family:var(--mono)">r.FormFile()</code> can read the file.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Uploaded files list -->
+    <div style="margin-top:2rem;">
+      <div class="page-header" style="margin-bottom:1rem;">
+        <h2 style="font-size:1.1rem; font-weight:700;">Uploaded files</h2>
+        <!-- Go: range {{.Files}} from DB or directory listing -->
+        <span class="text-xs text-muted">3 files</span>
+      </div>
+
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table style="width:100%; border-collapse:collapse; font-size:.875rem;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border); background:var(--surface2);">
+              <th style="text-align:left; padding:.75rem 1.25rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700;">File</th>
+              <th style="text-align:left; padding:.75rem 1rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700;">Task</th>
+              <th style="text-align:left; padding:.75rem 1rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700;">Size</th>
+              <th style="text-align:left; padding:.75rem 1rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700;">Uploaded</th>
+              <th style="padding:.75rem 1rem;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Go: {{range .Files}} -->
+            <tr style="border-bottom:1px solid var(--border); transition:background .15s;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="padding:.85rem 1.25rem;">
+                <div style="display:flex;align-items:center;gap:.65rem;">
+                  <span style="font-size:1.1rem;">📄</span>
+                  <span style="font-family:var(--mono); font-size:.8rem;">router-design.md</span>
+                </div>
+              </td>
+              <td style="padding:.85rem 1rem;"><a href="/tasks/1" class="text-sm text-accent">Set up HTTP server</a></td>
+              <td style="padding:.85rem 1rem; font-family:var(--mono); font-size:.8rem; color:var(--muted);">4.2 KB</td>
+              <td style="padding:.85rem 1rem; font-size:.8rem; color:var(--muted);">Apr 6, 2026</td>
+              <td style="padding:.85rem 1rem; text-align:right;">
+                <div style="display:flex;gap:.5rem;justify-content:flex-end;">
+                  <a href="/uploads/router-design.md" class="btn btn-ghost btn-sm">⬇ Download</a>
+                  <form method="POST" action="/uploads/router-design.md/delete" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="REPLACE"/>
+                    <button class="btn btn-danger btn-sm" onclick="return confirm('Delete?')">✕</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border); transition:background .15s;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="padding:.85rem 1.25rem;">
+                <div style="display:flex;align-items:center;gap:.65rem;">
+                  <span style="font-size:1.1rem;">🖼️</span>
+                  <span style="font-family:var(--mono); font-size:.8rem;">schema-diagram.png</span>
+                </div>
+              </td>
+              <td style="padding:.85rem 1rem;"><a href="/tasks/3" class="text-sm text-accent">Database schema</a></td>
+              <td style="padding:.85rem 1rem; font-family:var(--mono); font-size:.8rem; color:var(--muted);">128 KB</td>
+              <td style="padding:.85rem 1rem; font-size:.8rem; color:var(--muted);">Apr 5, 2026</td>
+              <td style="padding:.85rem 1rem; text-align:right;">
+                <div style="display:flex;gap:.5rem;justify-content:flex-end;">
+                  <a href="/uploads/schema-diagram.png" class="btn btn-ghost btn-sm">⬇ Download</a>
+                  <form method="POST" action="/uploads/schema-diagram.png/delete" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="REPLACE"/>
+                    <button class="btn btn-danger btn-sm" onclick="return confirm('Delete?')">✕</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <tr style="transition:background .15s;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="padding:.85rem 1.25rem;">
+                <div style="display:flex;align-items:center;gap:.65rem;">
+                  <span style="font-size:1.1rem;">📦</span>
+                  <span style="font-family:var(--mono); font-size:.8rem;">auth-notes.txt</span>
+                </div>
+              </td>
+              <td style="padding:.85rem 1rem;"><a href="/tasks/2" class="text-sm text-accent">Session auth</a></td>
+              <td style="padding:.85rem 1rem; font-family:var(--mono); font-size:.8rem; color:var(--muted);">1.8 KB</td>
+              <td style="padding:.85rem 1rem; font-size:.8rem; color:var(--muted);">Apr 4, 2026</td>
+              <td style="padding:.85rem 1rem; text-align:right;">
+                <div style="display:flex;gap:.5rem;justify-content:flex-end;">
+                  <a href="/uploads/auth-notes.txt" class="btn btn-ghost btn-sm">⬇ Download</a>
+                  <form method="POST" action="/uploads/auth-notes.txt/delete" style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="REPLACE"/>
+                    <button class="btn btn-danger btn-sm" onclick="return confirm('Delete?')">✕</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <!-- Go: {{end}} -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  // Wire up file preview to the upload zone's file list
+  document.getElementById('file-input')?.addEventListener('change', function() {
+    // app.js handleFiles will pick this up via the upload-zone listener
+  });
+</script>
+</body>
+</html>

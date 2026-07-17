@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — Taskr</title>
+  <link rel="icon" href="/static/images/logo.svg" type="image/svg+xml"/>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<!-- ── Navbar ────────────────────────────────────────── -->
+<nav class="navbar">
+  <div class="container">
+    <a href="/dashboard" class="navbar-brand"><span>Task</span>r</a>
+    <div class="navbar-nav">
+      <a href="/dashboard" class="nav-link active">Dashboard</a>
+      <a href="/tasks" class="nav-link">Tasks</a>
+      <a href="/upload" class="nav-link">Files</a>
+    </div>
+    <div style="display:flex; align-items:center; gap:.75rem;">
+      <!-- 
+        Go: read session cookie → show logged-in user's initials
+        Redirect to /login if no session 
+      -->
+      <div class="nav-avatar" title="Profile" onclick="location.href='/profile'">JD</div>
+      <!-- POST /logout → clear cookie, redirect /login -->
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Layout ────────────────────────────────────────── -->
+<div class="dashboard-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Menu</div>
+      <a href="/dashboard" class="sidebar-link active">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </a>
+      <!-- Go: /tasks → GET all tasks for logged-in user -->
+      <a href="/tasks" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
+        All Tasks
+        <span class="badge">12</span>
+      </a>
+      <a href="/tasks?status=inprogress" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        In Progress
+        <span class="badge">4</span>
+      </a>
+      <a href="/tasks?status=done" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Completed
+        <span class="badge">8</span>
+      </a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Projects</div>
+      <!-- Go: /projects → GET all projects, dynamic routes /projects/{id} -->
+      <a href="/projects/1" class="sidebar-link">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>
+        Backend API
+      </a>
+      <a href="/projects/2" class="sidebar-link">
+        <span style="width:8px;height:8px;border-radius:50%;background:#f4c542;flex-shrink:0;"></span>
+        Frontend
+      </a>
+      <a href="/projects/3" class="sidebar-link">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--accent3);flex-shrink:0;"></span>
+        DevOps
+      </a>
+    </div>
+
+    <div style="margin-top:auto;">
+      <a href="/profile" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile & Settings
+      </a>
+      <a href="/upload" class="sidebar-link">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        File Uploads
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main-content">
+    <div id="alert-zone"></div>
+
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Good morning, Jane </h1>
+        <!-- Go: inject user's name from session; inject date server-side -->
+        <p class="page-subtitle">Tuesday, 7 April 2026 · Here's what's on your plate.</p>
+      </div>
+      <button class="btn btn-primary" data-modal-open="task-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Task
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <!--
+      Go: query DB for counts grouped by status
+      Pass to template as struct fields
+    -->
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Tasks</div>
+        <div class="stat-value">12</div>
+        <div class="stat-change up">↑ 3 this week</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value">4</div>
+        <div class="stat-change">active now</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Completed</div>
+        <div class="stat-value">8</div>
+        <div class="stat-change up">↑ 2 today</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Overdue</div>
+        <div class="stat-value">1</div>
+        <div class="stat-change down">needs attention</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <!-- Go: pass ?q= query param → filter SQL WHERE title LIKE -->
+        <input class="form-control" type="search" id="task-search"
+               name="q" placeholder="Search tasks…" autocomplete="off"/>
+      </div>
+
+      <!-- Go: pass ?status= filter to handler -->
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="todo">To Do</button>
+      <button class="filter-btn" data-filter="inprogress">In Progress</button>
+      <button class="filter-btn" data-filter="done">Done</button>
+
+      <div class="view-toggle" style="margin-left:auto;">
+        <button class="view-btn active" id="btn-list-view" title="List view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+        <button class="view-btn" id="btn-kanban-view" title="Kanban view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- LIST VIEW -->
+    <!--
+      Go: range over []Task slice from DB
+      Each task row: ID, Title, Priority, Status, DueDate, Tags
+      Dynamic route: /tasks/{id} → GET task detail
+    -->
+    <div id="view-list">
+      <div class="task-list">
+
+        <div class="task-item" data-status="inprogress" onclick="location.href='/tasks/1'">
+          <div class="task-checkbox"></div>
+          <div class="task-body">
+            <div class="task-title">Set up Go HTTP server with routing</div>
+            <div class="task-meta">
+              <span class="badge badge-inprogress">In Progress</span>
+              <span class="badge badge-high">High</span>
+              <span class="text-xs text-muted">Due Apr 10</span>
+              <span class="badge badge-tag">backend</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <!-- Go: POST /tasks/{id}/edit -->
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation(); openModal('task-modal')" title="Edit">✎</button>
+            <!-- Go: POST /tasks/{id}/delete -->
+            <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();" title="Delete">✕</button>
+          </div>
+        </div>
+
+        <div class="task-item" data-status="todo" onclick="location.href='/tasks/2'">
+          <div class="task-checkbox"></div>
+          <div class="task-body">
+            <div class="task-title">Implement session-based authentication middleware</div>
+            <div class="task-meta">
+              <span class="badge badge-todo">To Do</span>
+              <span class="badge badge-high">High</span>
+              <span class="text-xs text-muted">Due Apr 12</span>
+              <span class="badge badge-tag">auth</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();" title="Edit">✎</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();" title="Delete">✕</button>
+          </div>
+        </div>
+
+        <div class="task-item done" data-status="done" onclick="location.href='/tasks/3'">
+          <div class="task-checkbox checked"></div>
+          <div class="task-body">
+            <div class="task-title">Design database schema for tasks and users</div>
+            <div class="task-meta">
+              <span class="badge badge-done">Done</span>
+              <span class="badge badge-medium">Medium</span>
+              <span class="text-xs text-muted">Completed Apr 5</span>
+              <span class="badge badge-tag">database</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();" title="Edit">✎</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();" title="Delete">✕</button>
+          </div>
+        </div>
+
+        <div class="task-item" data-status="inprogress" onclick="location.href='/tasks/4'">
+          <div class="task-checkbox"></div>
+          <div class="task-body">
+            <div class="task-title">Build file upload handler with multipart/form-data</div>
+            <div class="task-meta">
+              <span class="badge badge-inprogress">In Progress</span>
+              <span class="badge badge-medium">Medium</span>
+              <span class="text-xs text-muted">Due Apr 14</span>
+              <span class="badge badge-tag">uploads</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();" title="Edit">✎</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();" title="Delete">✕</button>
+          </div>
+        </div>
+
+        <div class="task-item" data-status="todo" onclick="location.href='/tasks/5'">
+          <div class="task-checkbox"></div>
+          <div class="task-body">
+            <div class="task-title">Write handler tests using net/http/httptest</div>
+            <div class="task-meta">
+              <span class="badge badge-todo">To Do</span>
+              <span class="badge badge-low">Low</span>
+              <span class="text-xs text-muted">Due Apr 20</span>
+              <span class="badge badge-tag">testing</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();" title="Edit">✎</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();" title="Delete">✕</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- KANBAN VIEW (hidden by default) -->
+    <div id="view-kanban" style="display:none;">
+      <div class="kanban-board">
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            <span class="kanban-col-title" style="color:var(--muted);">To Do</span>
+            <span class="kanban-count">2</span>
+          </div>
+          <div class="kanban-card" onclick="location.href='/tasks/2'">
+            <div class="kanban-card-title">Implement session auth middleware</div>
+            <div class="kanban-card-footer">
+              <span class="badge badge-high">High</span>
+              <span class="text-xs text-muted">Apr 12</span>
+            </div>
+          </div>
+          <div class="kanban-card" onclick="location.href='/tasks/5'">
+            <div class="kanban-card-title">Write handler tests with httptest</div>
+            <div class="kanban-card-footer">
+              <span class="badge badge-low">Low</span>
+              <span class="text-xs text-muted">Apr 20</span>
+            </div>
+          </div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            <span class="kanban-col-title" style="color:var(--accent);">In Progress</span>
+            <span class="kanban-count">2</span>
+          </div>
+          <div class="kanban-card" onclick="location.href='/tasks/1'">
+            <div class="kanban-card-title">Set up Go HTTP server with routing</div>
+            <div class="kanban-card-footer">
+              <span class="badge badge-high">High</span>
+              <span class="text-xs text-muted">Apr 10</span>
+            </div>
+          </div>
+          <div class="kanban-card" onclick="location.href='/tasks/4'">
+            <div class="kanban-card-title">File upload handler (multipart)</div>
+            <div class="kanban-card-footer">
+              <span class="badge badge-medium">Medium</span>
+              <span class="text-xs text-muted">Apr 14</span>
+            </div>
+          </div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-header">
+            <span class="kanban-col-title" style="color:var(--accent3);">Done</span>
+            <span class="kanban-count">1</span>
+          </div>
+          <div class="kanban-card" onclick="location.href='/tasks/3'">
+            <div class="kanban-card-title">Design database schema</div>
+            <div class="kanban-card-footer">
+              <span class="badge badge-done">Done</span>
+              <span class="text-xs text-muted">Apr 5</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── New/Edit Task Modal ──────────────────────────── -->
+<!--
+  Go: POST /tasks       → create (no ID in form)
+       POST /tasks/{id} → update (hidden id field)
+  Read fields: title, description, priority, status, due_date, tags
+-->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">New Task</h3>
+      <button class="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="task-form" method="POST" action="/tasks">
+        <input type="hidden" name="csrf_token" value="REPLACE_WITH_GO_CSRF_TOKEN"/>
+
+        <div class="form-group">
+          <label for="t-title">Title</label>
+          <input class="form-control" type="text" id="t-title" name="title"
+                 placeholder="What needs to be done?" data-maxlength="120" required/>
+        </div>
+
+        <div class="form-group">
+          <label for="t-desc">Description</label>
+          <textarea class="form-control" id="t-desc" name="description"
+                    placeholder="Add more detail…" rows="3"></textarea>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+          <div class="form-group">
+            <label for="t-priority">Priority</label>
+            <select class="form-control" id="t-priority" name="priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="t-status">Status</label>
+            <select class="form-control" id="t-status" name="status">
+              <option value="todo" selected>To Do</option>
+              <option value="inprogress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+          <div class="form-group">
+            <label for="t-due">Due date</label>
+            <input class="form-control" type="date" id="t-due" name="due_date"/>
+          </div>
+          <div class="form-group">
+            <label for="t-project">Project</label>
+            <select class="form-control" id="t-project" name="project_id">
+              <option value="">— None —</option>
+              <option value="1">Backend API</option>
+              <option value="2">Frontend</option>
+              <option value="3">DevOps</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="t-tags">Tags</label>
+          <input class="form-control" type="text" id="t-tags" name="tags"
+                 placeholder="backend, api, auth (comma-separated)"/>
+          <span class="form-hint">Go: split by comma → store as array / join table</span>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal-close>Cancel</button>
+      <button class="btn btn-primary" onclick="$('#task-form').requestSubmit()">Create Task</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
