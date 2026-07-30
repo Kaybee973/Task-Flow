@@ -10,7 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -92,28 +92,28 @@ func (m *X402Middleware) Handler(next http.Handler) http.Handler {
 		// ── Decode the payment payload ───────────────────────
 		decoded, err := base64.StdEncoding.DecodeString(sigHeader)
 		if err != nil {
-			log.Printf("x402: bad base64 in PAYMENT-SIGNATURE: %v", err)
+			slog.Warn("x402: bad base64 in PAYMENT-SIGNATURE", "error", err)
 			m.writePaymentFailed(w, "invalid_encoding", "PAYMENT-SIGNATURE must be base64-encoded JSON")
 			return
 		}
 
 		var payload PaymentPayload
 		if err := json.Unmarshal(decoded, &payload); err != nil {
-			log.Printf("x402: bad JSON in PAYMENT-SIGNATURE: %v", err)
+			slog.Warn("x402: bad JSON in PAYMENT-SIGNATURE", "error", err)
 			m.writePaymentFailed(w, "invalid_format", "PAYMENT-SIGNATURE must be valid JSON")
 			return
 		}
 
 		// ── Validate the payment payload ─────────────────────
 		if err := m.validatePayload(payload, r); err != nil {
-			log.Printf("x402: payload validation failed: %v", err)
+			slog.Warn("x402: payload validation failed", "error", err)
 			m.writePaymentFailed(w, "validation_failed", err.Error())
 			return
 		}
 
 		// ── Verify the signature ─────────────────────────────
 		if !m.verifySignature(payload) {
-			log.Printf("x402: invalid signature from sender %s", payload.Sender)
+			slog.Warn("x402: invalid signature", "sender", payload.Sender)
 			m.writePaymentFailed(w, "invalid_signature", "The payment signature could not be verified")
 			return
 		}
@@ -125,8 +125,8 @@ func (m *X402Middleware) Handler(next http.Handler) http.Handler {
 		}
 		m.writeSettlement(w, sr)
 
-		log.Printf("x402: payment accepted — sender=%s amount=%s request=%s",
-			payload.Sender, payload.Amount, r.Method+" "+r.URL.Path)
+		slog.Info("x402: payment accepted",
+			"sender", payload.Sender, "amount", payload.Amount, "method", r.Method, "path", r.URL.Path)
 
 		next.ServeHTTP(w, r)
 	})
@@ -157,7 +157,7 @@ func (m *X402Middleware) writePaymentRequired(w http.ResponseWriter, r *http.Req
 		"message":          "This endpoint requires payment via the x402 protocol. See https://x402.org",
 		"payment_required": pr,
 	}); err != nil {
-		log.Printf("x402: failed to encode payment_required response: %v", err)
+		slog.Error("x402: failed to encode payment_required response", "error", err)
 	}
 }
 
@@ -177,7 +177,7 @@ func (m *X402Middleware) writePaymentFailed(w http.ResponseWriter, errorCode, er
 		"error":   errorCode,
 		"message": errorMsg,
 	}); err != nil {
-		log.Printf("x402: failed to encode payment_failed response: %v", err)
+		slog.Error("x402: failed to encode payment_failed response", "error", err)
 	}
 }
 

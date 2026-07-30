@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o taskflow .
 # ── Stage 3: Production (minimal image) ───────────────────────
 FROM alpine:3.20 AS production
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates curl
 
 WORKDIR /app
 
@@ -37,5 +37,8 @@ COPY --from=builder /build/static ./static
 COPY --from=builder /build/*.html ./
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl --silent --fail http://localhost:8080/healthz || exit 1
 
 CMD ["./taskflow"]

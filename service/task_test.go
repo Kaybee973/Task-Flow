@@ -92,6 +92,10 @@ func (m *mockTaskStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *mockTaskStore) Ping(ctx context.Context) error {
+	return nil
+}
+
 func itoa(n int) string {
 	if n == 1 {
 		return "1"

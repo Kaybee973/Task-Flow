@@ -43,6 +43,7 @@ type TaskStore interface {
 	ListByProject(ctx context.Context, projectID string) ([]Task, error)
 	Update(ctx context.Context, id string, task Task) (Task, error)
 	Delete(ctx context.Context, id string) error
+	Ping(ctx context.Context) error
 }
 
 // ── In-Memory Implementation ───────────────────────────────────
@@ -166,5 +167,10 @@ func (s *InMemoryTaskStore) Delete(ctx context.Context, id string) error {
 	}
 
 	delete(s.tasks, id)
+	return nil
+}
+
+// Ping always returns nil for the in-memory store.
+func (s *InMemoryTaskStore) Ping(ctx context.Context) error {
 	return nil
 }

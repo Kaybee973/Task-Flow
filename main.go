@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,7 +27,7 @@ func serveTemplate(w http.ResponseWriter, file string, data interface{}) {
 		return
 	}
 	if err := tmpl.Execute(w, data); err != nil {
-		log.Println("template execute:", err)
+		slog.Error("template execute failed", "error", err)
 	}
 }
 
@@ -35,7 +35,7 @@ func serveTemplate(w http.ResponseWriter, file string, data interface{}) {
 // Simple logging middleware — wraps any handler.
 func logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
+		slog.Info("request", "method", r.Method, "path", r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -58,9 +58,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		serveTemplate(w, "login.html", nil)
 	case http.MethodPost:
 		email := r.FormValue("email")
-		password := r.FormValue("password")
-		log.Printf("Login attempt: %s / %s", email, password)
-		// TODO: query DB, bcrypt.CompareHashAndPassword, set cookie
+		_ = r.FormValue("password") // TODO: validate with bcrypt.CompareHashAndPassword
+		slog.Info("login attempt", "email", email)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -78,7 +77,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		email := r.FormValue("email")
 		password := r.FormValue("password")
 		confirm := r.FormValue("password_confirm")
-		log.Printf("Register: %s / %s", name, email)
+		slog.Info("register", "name", name, "email", email)
 		if password != confirm {
 			http.Error(w, "Passwords do not match", http.StatusBadRequest)
 			return
@@ -130,7 +129,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	case id == "":
 		if r.Method == http.MethodPost {
 			title := r.FormValue("title")
-			log.Printf("Create task: %s", title)
+			slog.Info("create task", "title", title)
 			// TODO: INSERT into DB
 			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		} else {
@@ -139,7 +138,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 
 	// /tasks/{id}/delete
 	case sub == "delete":
-		log.Printf("Delete task %s", id)
+		slog.Info("delete task", "task_id", id)
 		// TODO: DELETE FROM tasks WHERE id = ? AND user_id = ?
 		http.Redirect(w, r, "/tasks", http.StatusSeeOther)
 
@@ -153,7 +152,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			files := r.MultipartForm.File["attachment"]
 			for _, fh := range files {
-				log.Printf("Uploaded: %s (%d bytes) for task %s", fh.Filename, fh.Size, id)
+				slog.Info("file uploaded", "filename", fh.Filename, "size", fh.Size, "task_id", id)
 				// TODO: save file, record in DB
 			}
 			http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
@@ -162,7 +161,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	// /tasks/{id}
 	default:
 		if r.Method == http.MethodPost {
-			log.Printf("Update task %s: %s", id, r.FormValue("title"))
+			slog.Info("update task", "task_id", id, "title", r.FormValue("title"))
 			// TODO: UPDATE tasks SET ... WHERE id = ?
 			http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 		} else {
@@ -185,7 +184,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		files := r.MultipartForm.File["files"]
 		for _, fh := range files {
-			log.Printf("Upload: %s (%d bytes)", fh.Filename, fh.Size)
+			slog.Info("upload", "filename", fh.Filename, "size", fh.Size)
 			// TODO: os.MkdirAll("./uploads", 0755)
 		}
 		http.Redirect(w, r, "/upload", http.StatusSeeOther)
@@ -231,7 +230,7 @@ func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("API created task: id=%s title=%q project=%s", task.ID, task.Title, task.ProjectID)
+	slog.Info("api task created", "task_id", task.ID, "title", task.Title, "project_id", task.ProjectID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -242,7 +241,7 @@ func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
 // GET /api/projects/{id}/tasks. Returns all tasks for a project.
 func (h *apiHandlers) getProjectTasks(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
-	log.Printf("API get project tasks: project=%s", projectID)
+	slog.Info("api get project tasks", "project_id", projectID)
 
 	tasks, err := h.svc.GetProjectTasks(r.Context(), projectID)
 	if err != nil {
@@ -293,7 +292,7 @@ func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("API updated task: id=%s status=%q", task.ID, task.Status)
+	slog.Info("api task updated", "task_id", task.ID, "status", task.Status)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(task)
@@ -303,7 +302,7 @@ func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/tasks/{id}. Deletes a task.
 func (h *apiHandlers) deleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
-	log.Printf("API delete task: id=%s", taskID)
+	slog.Info("api task deleted", "task_id", taskID)
 
 	if err := h.svc.DeleteTask(r.Context(), taskID); err != nil {
 		switch err.(type) {
@@ -343,9 +342,57 @@ func writeJSONError(w http.ResponseWriter, code, message string, status int) {
 // to complete after receiving a shutdown signal.
 const shutdownTimeout = 10 * time.Second
 
+// startTime records when the server started, used by the health
+// endpoint to report uptime.
+var startTime = time.Now()
+
+// pinger is satisfied by any TaskStore implementation that can
+// report database connectivity.
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// healthHandler returns the server health status as JSON.
+// It checks:
+//   - Server is alive (always true if this handler runs)
+//   - Database connectivity via Ping
+//   - Uptime since server start
+//
+// On failure it still returns 200 with a degraded field so that
+// load balancers can route around an unhealthy database without
+// dropping the connection entirely.
+func healthHandler(p pinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uptime := time.Since(startTime).Truncate(time.Second).String()
+
+		resp := map[string]interface{}{
+			"status":  "ok",
+			"service": "taskflow",
+			"uptime":  uptime,
+		}
+
+		// Check database connectivity.
+		if err := p.Ping(r.Context()); err != nil {
+			resp["status"] = "degraded"
+			resp["database"] = map[string]interface{}{
+				"status": "unreachable",
+				"error":  err.Error(),
+			}
+		} else {
+			resp["database"] = map[string]interface{}{
+				"status": "connected",
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 // newRouter builds the http.Handler (mux) with all routes and
 // middleware wired. Extracted so tests and main() can share it.
-func newRouter(api *apiHandlers) http.Handler {
+// The pinger is used by the /healthz endpoint.
+func newRouter(api *apiHandlers, p pinger) http.Handler {
 	mux := http.NewServeMux()
 
 	// ── x402 Payment Middleware ──────────────────────────────
@@ -358,6 +405,13 @@ func newRouter(api *apiHandlers) http.Handler {
 		PayTo:    "0xTaskFlowPayToAddress",
 	}
 	x402Mw := middleware.New(x402Cfg)
+
+	// ── Health check (no auth, no payment) ───────────────────
+	// GET /healthz and /health both report server status.
+	// These are intentionally outside any middleware so they
+	// work for load balancers, Kubernetes probes, etc.
+	mux.HandleFunc("GET /healthz", healthHandler(p))
+	mux.HandleFunc("GET /health", healthHandler(p))
 
 	// ── Static assets ────────────────────────────────────────
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
@@ -396,6 +450,14 @@ func newRouter(api *apiHandlers) http.Handler {
 
 // ── Main ────────────────────────────────────────────────────────
 func main() {
+	// ── Structured JSON logging ───────────────────────────────
+	// All server logs are emitted as newline-delimited JSON for
+	// easy ingestion by log aggregators (Datadog, Loki, etc.).
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: false,
+	})))
+
 	// ── Dependencies ───────────────────────────────────────────
 	// Use PostgreSQL when DATABASE_URL is set, otherwise fall
 	// back to the in-memory store (great for development).
@@ -408,14 +470,15 @@ func main() {
 		ctx := context.Background()
 		pgStore, err := storage.NewPostgresTaskStore(ctx, dbURL)
 		if err != nil {
-			log.Fatalf("failed to connect to PostgreSQL: %v", err)
+			slog.Error("failed to connect to PostgreSQL", "error", err)
+			os.Exit(1)
 		}
 		closers = append(closers, pgStore.Close)
 		store = pgStore
-		log.Println("Using PostgreSQL storage")
+		slog.Info("storage backend", "backend", "postgresql")
 	} else {
 		store = storage.NewInMemoryTaskStore()
-		log.Println("Using in-memory storage (set DATABASE_URL for PostgreSQL)")
+		slog.Info("storage backend", "backend", "in-memory", "hint", "set DATABASE_URL for PostgreSQL")
 	}
 
 	svc := service.NewTaskService(store)
@@ -429,7 +492,7 @@ func main() {
 	// ── HTTP Server ───────────────────────────────────────────
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: newRouter(api),
+		Handler: newRouter(api, store),
 	}
 
 	// ── Signal handling (graceful shutdown) ───────────────────
@@ -444,22 +507,19 @@ func main() {
 	// (e.g. port already in use), we log.Fatalf immediately — there's
 	// nothing to gracefully shut down in that case.
 	go func() {
-		log.Printf("Server running at http://localhost:%s", port)
-		log.Printf("x402-protected API endpoints:")
-		log.Printf("  POST   /api/tasks")
-		log.Printf("  GET    /api/projects/{id}/tasks")
-		log.Printf("  PUT    /api/tasks/{id}")
-		log.Printf("  DELETE /api/tasks/{id}")
-		log.Printf("Graceful shutdown enabled — send SIGINT/SIGTERM to stop")
+		slog.Info("server starting", "addr", ":"+port)
+		slog.Info("x402 endpoints", "POST", "/api/tasks", "GET", "/api/projects/{id}/tasks", "PUT", "/api/tasks/{id}", "DELETE", "/api/tasks/{id}")
+		slog.Info("graceful shutdown enabled — send SIGINT/SIGTERM to stop")
 
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Server error: %v", err)
+			slog.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// Block until we receive a signal.
 	sig := <-stop
-	log.Printf("Received signal: %v — starting graceful shutdown...", sig)
+	slog.Warn("shutting down", "signal", sig.String())
 
 	// Create a context with a timeout so the server can't wait
 	// indefinitely for in-flight requests to finish.
@@ -469,9 +529,9 @@ func main() {
 	// Shutdown gracefully: stop accepting new connections and
 	// wait for active ones to finish (up to shutdownTimeout).
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("Graceful shutdown incomplete: %v", err)
+		slog.Error("graceful shutdown incomplete", "error", err)
 		if err := srv.Close(); err != nil {
-			log.Printf("Force close error: %v", err)
+			slog.Error("force close error", "error", err)
 		}
 	}
 
@@ -480,5 +540,5 @@ func main() {
 		closeFn()
 	}
 
-	log.Println("Server stopped cleanly")
+	slog.Info("server stopped")
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"tessst/middleware"
 	"tessst/service"
 	"tessst/storage"
 )
@@ -45,22 +44,9 @@ func newTestHarness(t *testing.T) *testHarness {
 	svc := service.NewTaskService(store)
 	api := newAPIHandlers(svc)
 
-	// Wire the x402 middleware
-	x402Cfg := middleware.X402Config{
-		Price:    "$0.001",
-		Currency: "USDC",
-		Network:  "eip155:84532",
-		PayTo:    "0xTaskFlowPayToAddress",
-	}
-	x402Mw := middleware.New(x402Cfg)
-
-	mux := http.NewServeMux()
-	mux.Handle("POST /api/tasks", x402Mw.Handler(http.HandlerFunc(api.createTask)))
-	mux.Handle("GET /api/projects/{id}/tasks", x402Mw.Handler(http.HandlerFunc(api.getProjectTasks)))
-	mux.Handle("PUT /api/tasks/{id}", x402Mw.Handler(http.HandlerFunc(api.updateTask)))
-	mux.Handle("DELETE /api/tasks/{id}", x402Mw.Handler(http.HandlerFunc(api.deleteTask)))
-
-	server := httptest.NewServer(mux)
+	// Use the canonical router builder — same as main().
+	// This exercises the real route wiring including /healthz.
+	server := httptest.NewServer(newRouter(api, store))
 	t.Cleanup(server.Close)
 
 	return &testHarness{
@@ -532,5 +518,55 @@ func TestHandler_GetProjectTasks_EmptyList(t *testing.T) {
 	}
 	if len(resp.Tasks) != 0 {
 		t.Errorf("expected 0 tasks, got %d", len(resp.Tasks))
+	}
+}
+
+// ── Tests: Health endpoint ────────────────────────────────────
+
+func TestHandler_Healthz_Returns200WithStatus(t *testing.T) {
+	h := newTestHarness(t)
+
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rec := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d", rec.Code)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+
+	if body["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", body["status"])
+	}
+	if body["service"] != "taskflow" {
+		t.Errorf("expected service=taskflow, got %v", body["service"])
+	}
+	if body["uptime"] == nil || body["uptime"] == "" {
+		t.Error("expected non-empty uptime")
+	}
+
+	db, ok := body["database"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected database field to be an object")
+	}
+	if db["status"] != "connected" {
+		t.Errorf("expected database.status=connected, got %v", db["status"])
+	}
+}
+
+func TestHandler_Health_AlsoWorks(t *testing.T) {
+	h := newTestHarness(t)
+
+	// /health should work the same as /healthz
+	req := httptest.NewRequest("GET", "/health", nil)
+	rec := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 on /health, got %d", rec.Code)
 	}
 }

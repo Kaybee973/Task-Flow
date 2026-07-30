@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -57,7 +57,7 @@ func VerifyX402Signature(payload PaymentPayload) bool {
 		Sender:    payload.Sender,
 	})
 	if err != nil {
-		log.Printf("x402: failed to marshal signer fields: %v", err)
+		slog.Error("x402: failed to marshal signer fields", "error", err)
 		return false
 	}
 
@@ -70,12 +70,12 @@ func VerifyX402Signature(payload PaymentPayload) bool {
 	sigHex := strings.TrimPrefix(payload.Signature, "0x")
 	sigBytes, err := hex.DecodeString(sigHex)
 	if err != nil {
-		log.Printf("x402: failed to decode signature hex: %v", err)
+		slog.Warn("x402: failed to decode signature hex", "error", err)
 		return false
 	}
 
 	if len(sigBytes) != 65 {
-		log.Printf("x402: invalid signature length: got %d bytes, want 65", len(sigBytes))
+		slog.Warn("x402: invalid signature length", "got", len(sigBytes), "want", 65)
 		return false
 	}
 
@@ -85,7 +85,7 @@ func VerifyX402Signature(payload PaymentPayload) bool {
 	// Ecrecover expects V as 27 or 28 (or 0/1 — it handles both).
 	pubKeyBytes, err := crypto.Ecrecover(hash.Bytes(), sigBytes)
 	if err != nil {
-		log.Printf("x402: ecrecover failed: %v", err)
+		slog.Error("x402: ecrecover failed", "error", err)
 		return false
 	}
 
@@ -95,7 +95,7 @@ func VerifyX402Signature(payload PaymentPayload) bool {
 	// ECDSA public key, then derive the address.
 	pubKey, err := crypto.UnmarshalPubkey(pubKeyBytes)
 	if err != nil {
-		log.Printf("x402: failed to unmarshal public key: %v", err)
+		slog.Error("x402: failed to unmarshal public key", "error", err)
 		return false
 	}
 

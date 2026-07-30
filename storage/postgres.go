@@ -226,6 +226,11 @@ func (s *PostgresTaskStore) Update(ctx context.Context, id string, updates Task)
 	return s.GetByID(ctx, id)
 }
 
+// Ping verifies the database connection is alive.
+func (s *PostgresTaskStore) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // Delete removes a task by ID.
 func (s *PostgresTaskStore) Delete(ctx context.Context, id string) error {
 	sql := `DELETE FROM tasks WHERE id = $1`
