@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"tessst/middleware"
+	"tessst/service"
+	"tessst/storage"
 )
 
 // ── Template helper ─────────────────────────────────────────────
@@ -35,13 +40,11 @@ func logging(next http.Handler) http.Handler {
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// TODO: read session cookie, validate, redirect to /login if missing
-		// cookie, err := r.Cookie("session_token")
-		// if err != nil { http.Redirect(w, r, "/login", http.StatusSeeOther); return }
 		next(w, r)
 	}
 }
 
-// ── Handlers ────────────────────────────────────────────────────
+// ── Handlers (HTML / Web UI) ───────────────────────────────────
 
 // GET /login   — show login form
 // POST /login  — validate credentials, set session cookie
@@ -94,12 +97,15 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	serveTemplate(w, "dashboard.html", nil)
 }
 
-// GET  /tasks            — list all tasks
-// POST /tasks            — create task
+// GET  /tasks            — list all tasks (HTML)
+// POST /tasks            — create task (HTML form POST)
 // GET  /tasks/{id}       — task detail
 // POST /tasks/{id}       — update task
 // POST /tasks/{id}/delete
 // POST /tasks/{id}/attachments — file upload
+//
+// Note: API-style POST /api/tasks and GET /api/projects/{id}/tasks
+// are protected by the x402 payment middleware (see main()).
 func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	// Strip leading /tasks
 	path := strings.TrimPrefix(r.URL.Path, "/tasks")
@@ -177,9 +183,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		for _, fh := range files {
 			log.Printf("Upload: %s (%d bytes)", fh.Filename, fh.Size)
 			// TODO: os.MkdirAll("./uploads", 0755)
-			// f, _ := fh.Open(); defer f.Close()
-			// dst, _ := os.Create("./uploads/" + fh.Filename)
-			// io.Copy(dst, f)
 		}
 		http.Redirect(w, r, "/upload", http.StatusSeeOther)
 	}
@@ -190,28 +193,206 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 	serveTemplate(w, "profile.html", nil)
 }
 
+// ── API Handlers (JSON, x402-protected) ────────────────────────
+
+// apiHandlers groups the API handler dependencies so we can inject
+// them via a constructor rather than package-level globals.
+type apiHandlers struct {
+	svc *service.TaskService
+}
+
+// newAPIHandlers creates the handler struct with all dependencies.
+func newAPIHandlers(svc *service.TaskService) *apiHandlers {
+	return &apiHandlers{svc: svc}
+}
+
+// createTask is the x402-protected API handler for POST /api/tasks.
+// External tools / AI agents call this with a PAYMENT-SIGNATURE header.
+func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		ProjectID   string   `json:"project_id"`
+		Assignees   []string `json:"assignees"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "bad_request", "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	task, err := h.svc.CreateTask(req.Title, req.Description, req.ProjectID, req.Assignees)
+	if err != nil {
+		writeJSONError(w, "creation_failed", err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	log.Printf("API created task: id=%s title=%q project=%s", task.ID, task.Title, task.ProjectID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(task)
+}
+
+// getProjectTasks is the x402-protected API handler for
+// GET /api/projects/{id}/tasks. Returns all tasks for a project.
+func (h *apiHandlers) getProjectTasks(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	log.Printf("API get project tasks: project=%s", projectID)
+
+	tasks, err := h.svc.GetProjectTasks(projectID)
+	if err != nil {
+		writeJSONError(w, "internal_error", err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return an empty array instead of null when there are no tasks.
+	if tasks == nil {
+		tasks = []storage.Task{}
+	}
+
+	resp := map[string]interface{}{
+		"ok":         true,
+		"project_id": projectID,
+		"tasks":      tasks,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// updateTask is the x402-protected API handler for
+// PUT /api/tasks/{id}. Updates an existing task.
+func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+
+	var req struct {
+		Title       string   `json:"title,omitempty"`
+		Description string   `json:"description,omitempty"`
+		Status      string   `json:"status,omitempty"`
+		Assignees   []string `json:"assignees,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, "bad_request", "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	task, err := h.svc.UpdateTask(taskID, req.Title, req.Description, req.Status, req.Assignees)
+	if err != nil {
+		switch err.(type) {
+		case *storage.TaskNotFound:
+			writeJSONError(w, "not_found", err.Error(), http.StatusNotFound)
+		default:
+			writeJSONError(w, "update_failed", err.Error(), http.StatusUnprocessableEntity)
+		}
+		return
+	}
+
+	log.Printf("API updated task: id=%s status=%q", task.ID, task.Status)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(task)
+}
+
+// deleteTask is the x402-protected API handler for
+// DELETE /api/tasks/{id}. Deletes a task.
+func (h *apiHandlers) deleteTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	log.Printf("API delete task: id=%s", taskID)
+
+	if err := h.svc.DeleteTask(taskID); err != nil {
+		switch err.(type) {
+		case *storage.TaskNotFound:
+			writeJSONError(w, "not_found", err.Error(), http.StatusNotFound)
+		default:
+			writeJSONError(w, "delete_failed", err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	resp := map[string]interface{}{
+		"ok":      true,
+		"task_id": taskID,
+		"status":  "deleted",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// ── Helper ─────────────────────────────────────────────────────
+
+// writeJSONError writes a uniform JSON error response.
+func writeJSONError(w http.ResponseWriter, code, message string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error":   code,
+		"message": message,
+	})
+}
+
 // ── Main ────────────────────────────────────────────────────────
 func main() {
+	// ── Dependencies ───────────────────────────────────────────
+	// Use PostgreSQL when DATABASE_URL is set, otherwise fall
+	// back to the in-memory store (great for development).
+	var store storage.TaskStore
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		ctx := context.Background()
+		pgStore, err := storage.NewPostgresTaskStore(ctx, dbURL)
+		if err != nil {
+			log.Fatalf("failed to connect to PostgreSQL: %v", err)
+		}
+		defer pgStore.Close()
+		store = pgStore
+		log.Println("Using PostgreSQL storage")
+	} else {
+		store = storage.NewInMemoryTaskStore()
+		log.Println("Using in-memory storage (set DATABASE_URL for PostgreSQL)")
+	}
+
+	svc := service.NewTaskService(store)
+	api := newAPIHandlers(svc)
+
 	mux := http.NewServeMux()
 
-	// Serve static assets: CSS, JS, images
-	// Files in ./static/ are served at /static/
+	// ── x402 Payment Middleware ──────────────────────────────
+	// Protects API endpoints so external tools / AI agents pay
+	// per-call via the x402 protocol (https://x402.org).
+	x402Cfg := middleware.X402Config{
+		Price:    "$0.001",
+		Currency: "USDC",
+		Network:  "eip155:84532",
+		PayTo:    "0xTaskFlowPayToAddress",
+	}
+	x402Mw := middleware.New(x402Cfg)
+
+	// ── Static assets ────────────────────────────────────────
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// Auth routes (no auth guard needed)
+	// ── Auth routes (no auth guard needed) ───────────────────
 	mux.HandleFunc("/login", loginHandler)
 	mux.HandleFunc("/register", registerHandler)
 	mux.HandleFunc("/logout", logoutHandler)
 
-	// Protected routes — wrap with requireAuth in real app
+	// ── Protected HTML routes (session auth) ─────────────────
 	mux.HandleFunc("/dashboard", requireAuth(dashboardHandler))
 	mux.HandleFunc("/tasks", requireAuth(tasksHandler))
-	mux.HandleFunc("/tasks/", requireAuth(tasksHandler)) // catches /tasks/{id} and sub-paths
+	mux.HandleFunc("/tasks/", requireAuth(tasksHandler))
 	mux.HandleFunc("/upload", requireAuth(uploadHandler))
 	mux.HandleFunc("/profile", requireAuth(profileHandler))
 	mux.HandleFunc("/profile/", requireAuth(profileHandler))
 
-	// Root redirect
+	// ── x402-Protected API Routes (payment-gated) ────────────
+	// External tools and AI agents pay per-call.
+	mux.Handle("POST /api/tasks", x402Mw.Handler(http.HandlerFunc(api.createTask)))
+	mux.Handle("GET /api/projects/{id}/tasks", x402Mw.Handler(http.HandlerFunc(api.getProjectTasks)))
+	mux.Handle("PUT /api/tasks/{id}", x402Mw.Handler(http.HandlerFunc(api.updateTask)))
+	mux.Handle("DELETE /api/tasks/{id}", x402Mw.Handler(http.HandlerFunc(api.deleteTask)))
+
+	// ── Root redirect ─────────────────────────────────────────
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
@@ -226,30 +407,12 @@ func main() {
 	}
 
 	log.Printf("Server running at http://localhost:%s", port)
+	log.Printf("x402-protected API endpoints:")
+	log.Printf("  POST   /api/tasks")
+	log.Printf("  GET    /api/projects/{id}/tasks")
+	log.Printf("  PUT    /api/tasks/{id}")
+	log.Printf("  DELETE /api/tasks/{id}")
 	log.Fatal(http.ListenAndServe(":"+port, logging(mux)))
 }
 
-type NoDirFs struct {
-	fs http.FileSystem
-}
 
-func (ndf *NoDirFs) Open(path string) (http.File, error) {
-	file, err := ndf.fs.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	if stat.IsDir() {
-		index := filepath.Join(path, "index.html")
-		if _, err := ndf.fs.Open(index); err != nil {
-			file.Close()
-			return nil, err
-		}
-	}
-	return file, nil
-}
