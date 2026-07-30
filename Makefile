@@ -102,6 +102,36 @@ run-pg:
 run-binary:
 	PORT=$(PORT) ./$(BINARY)
 
+# ── Docker ─────────────────────────────────────────────────────
+
+# Start PostgreSQL + the app with hot-reload.
+dc-up:
+	docker compose up -d
+
+# Start only PostgreSQL (for running the app locally with make run-pg).
+dc-db:
+	docker compose up -d db
+
+# View logs.
+dc-logs:
+	docker compose logs -f
+
+# Stop and remove containers.
+dc-down:
+	docker compose down
+
+# Stop and remove containers + volumes (wipes the database).
+dc-down-clean:
+	docker compose down -v
+
+# Build the production image.
+dc-build:
+	docker compose build app
+
+# Run the production stack.
+dc-prod:
+	docker compose up -d app
+
 # ── Clean ──────────────────────────────────────────────────────
 
 clean:

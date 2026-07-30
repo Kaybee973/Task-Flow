@@ -153,8 +153,8 @@ func (m *X402Middleware) writePaymentRequired(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusPaymentRequired)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"error":           "payment_required",
-		"message":         "This endpoint requires payment via the x402 protocol. See https://x402.org",
+		"error":            "payment_required",
+		"message":          "This endpoint requires payment via the x402 protocol. See https://x402.org",
 		"payment_required": pr,
 	}); err != nil {
 		log.Printf("x402: failed to encode payment_required response: %v", err)

@@ -414,5 +414,3 @@ func main() {
 	log.Printf("  DELETE /api/tasks/{id}")
 	log.Fatal(http.ListenAndServe(":"+port, logging(mux)))
 }
-
-

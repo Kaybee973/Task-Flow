@@ -23,13 +23,13 @@ type signerFields struct {
 }
 
 type paymentPayload struct {
-	Scheme    string   `json:"scheme"`
-	Amount    string   `json:"amount"`
-	Currency  string   `json:"currency"`
-	Network   string   `json:"network"`
-	RequestID string   `json:"requestId"`
-	Signature string   `json:"signature"`
-	Sender    string   `json:"sender"`
+	Scheme    string `json:"scheme"`
+	Amount    string `json:"amount"`
+	Currency  string `json:"currency"`
+	Network   string `json:"network"`
+	RequestID string `json:"requestId"`
+	Signature string `json:"signature"`
+	Sender    string `json:"sender"`
 }
 
 func main() {

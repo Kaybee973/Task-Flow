@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    container_name: taskflow-db
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER:-taskflow}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-taskflow}
+      POSTGRES_DB: ${PG_DATABASE:-taskflow}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-taskflow} -d ${PG_DATABASE:-taskflow}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  # ── TaskFlow App (development) ─────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: taskflow-app
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: ${PORT:-8080}
+      DATABASE_URL: postgres://${PG_USER:-taskflow}:${PG_PASSWORD:-taskflow}@db:5432/${PG_DATABASE:-taskflow}?sslmode=disable
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
