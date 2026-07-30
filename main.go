@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -31,11 +34,63 @@ func serveTemplate(w http.ResponseWriter, file string, data interface{}) {
 	}
 }
 
+// ── Context keys ───────────────────────────────────────────────
+
+type contextKey string
+
+func (k contextKey) String() string { return "taskflow." + string(k) }
+
+// requestIDKey is used to store the request ID in the request context.
+const requestIDKey = contextKey("request_id")
+
 // ── Middleware ──────────────────────────────────────────────────
-// Simple logging middleware — wraps any handler.
+
+// requestID is a middleware that ensures every request has a unique
+// identifier. It first checks for an incoming X-Request-Id header
+// (from a load balancer / proxy), falling back to a randomly generated
+// hex string. The ID and a request-scoped logger are stored in the
+// request context so all handlers can include them in their log lines.
+func requestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-Id")
+		if id == "" {
+			// Generate a random 8-byte hex string (16 chars).
+			var buf [8]byte
+			if _, err := rand.Read(buf[:]); err != nil {
+				// Fallback: extremely unlikely to fail on a healthy system.
+				// Use a timestamp to ensure uniqueness across concurrent calls.
+				id = fmt.Sprintf("%x", time.Now().UnixNano())
+			} else {
+				id = hex.EncodeToString(buf[:])
+			}
+		}
+
+		// Attach the ID to the response so callers can correlate.
+		w.Header().Set("X-Request-Id", id)
+
+		// Store the ID and a request-scoped logger in the context.
+		logger := slog.Default().With("request_id", id)
+		ctx := context.WithValue(r.Context(), requestIDKey, logger)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// reqLog returns a logger pre-configured with the request's ID
+// (if any), or the default logger if no request-scoped logger
+// is found in the context.
+func reqLog(r *http.Request) *slog.Logger {
+	if logger, ok := r.Context().Value(requestIDKey).(*slog.Logger); ok {
+		return logger
+	}
+	return slog.Default()
+}
+
+// logging wraps any handler and logs each incoming request with
+// the request ID (from context) and basic request metadata.
 func logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("request", "method", r.Method, "path", r.URL.Path)
+		reqLog(r).Info("request", "method", r.Method, "path", r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -59,7 +114,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		email := r.FormValue("email")
 		_ = r.FormValue("password") // TODO: validate with bcrypt.CompareHashAndPassword
-		slog.Info("login attempt", "email", email)
+		reqLog(r).Info("login attempt", "email", email)
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -77,7 +132,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		email := r.FormValue("email")
 		password := r.FormValue("password")
 		confirm := r.FormValue("password_confirm")
-		slog.Info("register", "name", name, "email", email)
+		reqLog(r).Info("register", "name", name, "email", email)
 		if password != confirm {
 			http.Error(w, "Passwords do not match", http.StatusBadRequest)
 			return
@@ -129,7 +184,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	case id == "":
 		if r.Method == http.MethodPost {
 			title := r.FormValue("title")
-			slog.Info("create task", "title", title)
+			reqLog(r).Info("create task", "title", title)
 			// TODO: INSERT into DB
 			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		} else {
@@ -138,7 +193,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 
 	// /tasks/{id}/delete
 	case sub == "delete":
-		slog.Info("delete task", "task_id", id)
+		reqLog(r).Info("delete task", "task_id", id)
 		// TODO: DELETE FROM tasks WHERE id = ? AND user_id = ?
 		http.Redirect(w, r, "/tasks", http.StatusSeeOther)
 
@@ -152,7 +207,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			files := r.MultipartForm.File["attachment"]
 			for _, fh := range files {
-				slog.Info("file uploaded", "filename", fh.Filename, "size", fh.Size, "task_id", id)
+				reqLog(r).Info("file uploaded", "filename", fh.Filename, "size", fh.Size, "task_id", id)
 				// TODO: save file, record in DB
 			}
 			http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
@@ -161,7 +216,7 @@ func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	// /tasks/{id}
 	default:
 		if r.Method == http.MethodPost {
-			slog.Info("update task", "task_id", id, "title", r.FormValue("title"))
+			reqLog(r).Info("update task", "task_id", id, "title", r.FormValue("title"))
 			// TODO: UPDATE tasks SET ... WHERE id = ?
 			http.Redirect(w, r, "/tasks/"+id, http.StatusSeeOther)
 		} else {
@@ -184,7 +239,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		files := r.MultipartForm.File["files"]
 		for _, fh := range files {
-			slog.Info("upload", "filename", fh.Filename, "size", fh.Size)
+			reqLog(r).Info("upload", "filename", fh.Filename, "size", fh.Size)
 			// TODO: os.MkdirAll("./uploads", 0755)
 		}
 		http.Redirect(w, r, "/upload", http.StatusSeeOther)
@@ -230,7 +285,7 @@ func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("api task created", "task_id", task.ID, "title", task.Title, "project_id", task.ProjectID)
+	reqLog(r).Info("api task created", "task_id", task.ID, "title", task.Title, "project_id", task.ProjectID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -241,7 +296,7 @@ func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
 // GET /api/projects/{id}/tasks. Returns all tasks for a project.
 func (h *apiHandlers) getProjectTasks(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
-	slog.Info("api get project tasks", "project_id", projectID)
+	reqLog(r).Info("api get project tasks", "project_id", projectID)
 
 	tasks, err := h.svc.GetProjectTasks(r.Context(), projectID)
 	if err != nil {
@@ -292,7 +347,7 @@ func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("api task updated", "task_id", task.ID, "status", task.Status)
+	reqLog(r).Info("api task updated", "task_id", task.ID, "status", task.Status)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(task)
@@ -302,7 +357,7 @@ func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/tasks/{id}. Deletes a task.
 func (h *apiHandlers) deleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
-	slog.Info("api task deleted", "task_id", taskID)
+	reqLog(r).Info("api task deleted", "task_id", taskID)
 
 	if err := h.svc.DeleteTask(r.Context(), taskID); err != nil {
 		switch err.(type) {
@@ -445,7 +500,25 @@ func newRouter(api *apiHandlers, p pinger) http.Handler {
 		http.NotFound(w, r)
 	})
 
-	return logging(mux)
+	// Wrap with request ID first, then logging — so the request
+	// ID is available to the logging middleware and all handlers.
+	return logging(requestID(mux))
+}
+
+// parseLogLevel reads the LOG_LEVEL environment variable and
+// returns the corresponding slog.Level. Defaults to slog.LevelInfo
+// if the variable is unset or unrecognized.
+func parseLogLevel() slog.Level {
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // ── Main ────────────────────────────────────────────────────────
@@ -453,9 +526,12 @@ func main() {
 	// ── Structured JSON logging ───────────────────────────────
 	// All server logs are emitted as newline-delimited JSON for
 	// easy ingestion by log aggregators (Datadog, Loki, etc.).
+	//
+	// Set LOG_LEVEL to one of: debug, info, warn, error (default: info).
+	logLevel := parseLogLevel()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level:     slog.LevelInfo,
-		AddSource: false,
+		Level:     logLevel,
+		AddSource: logLevel == slog.LevelDebug,
 	})))
 
 	// ── Dependencies ───────────────────────────────────────────
