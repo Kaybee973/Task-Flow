@@ -570,3 +570,87 @@ func TestHandler_Health_AlsoWorks(t *testing.T) {
 		t.Fatalf("expected HTTP 200 on /health, got %d", rec.Code)
 	}
 }
+
+// ── Tests: X-Request-Id header ────────────────────────────────
+
+func TestHandler_RequestID_SetOnAllEndpoints(t *testing.T) {
+	h := newTestHarness(t)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"GET /healthz (no auth)", "GET", "/healthz", ""},
+		{"GET /health (no auth)", "GET", "/health", ""},
+		{"POST /api/tasks unpaid", "POST", "/api/tasks", `{"title":"x"}`},
+		{"GET /api/projects/p1/tasks unpaid", "GET", "/api/projects/p1/tasks", ""},
+		{"PUT /api/tasks/task-x unpaid", "PUT", "/api/tasks/task-x", `{"status":"done"}`},
+		{"DELETE /api/tasks/task-x unpaid", "DELETE", "/api/tasks/task-x", ""},
+		{"GET / (root redirect)", "GET", "/", ""},
+		{"GET /nonexistent (404)", "GET", "/nonexistent", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req *http.Request
+			if tt.body != "" {
+				req = httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+				req.Header.Set("Content-Type", "application/json")
+			} else {
+				req = httptest.NewRequest(tt.method, tt.path, nil)
+			}
+
+			rec := httptest.NewRecorder()
+			h.server.Config.Handler.ServeHTTP(rec, req)
+
+			reqID := rec.Header().Get("X-Request-Id")
+			if reqID == "" {
+				t.Error("expected non-empty X-Request-Id header")
+			}
+			if len(reqID) < 8 {
+				t.Errorf("expected X-Request-Id to be at least 8 chars, got %q (len=%d)", reqID, len(reqID))
+			}
+		})
+	}
+}
+
+func TestHandler_RequestID_PropagatesFromHeader(t *testing.T) {
+	h := newTestHarness(t)
+
+	// When a client sends an X-Request-Id header, the server should
+	// echo it back rather than generating a new one.
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("X-Request-Id", "client-provided-id-123")
+
+	rec := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec, req)
+
+	got := rec.Header().Get("X-Request-Id")
+	if got != "client-provided-id-123" {
+		t.Errorf("expected X-Request-Id to echo client value, got %q", got)
+	}
+}
+
+func TestHandler_RequestID_UniquePerRequest(t *testing.T) {
+	h := newTestHarness(t)
+
+	// Two sequential requests should get different IDs.
+	req1 := httptest.NewRequest("GET", "/healthz", nil)
+	rec1 := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec1, req1)
+	id1 := rec1.Header().Get("X-Request-Id")
+
+	req2 := httptest.NewRequest("GET", "/healthz", nil)
+	rec2 := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec2, req2)
+	id2 := rec2.Header().Get("X-Request-Id")
+
+	if id1 == "" || id2 == "" {
+		t.Fatal("expected non-empty request IDs")
+	}
+	if id1 == id2 {
+		t.Errorf("expected unique request IDs, but both were %q", id1)
+	}
+}

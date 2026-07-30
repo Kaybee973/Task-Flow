@@ -34,13 +34,15 @@ func serveTemplate(w http.ResponseWriter, file string, data interface{}) {
 	}
 }
 
-// ── Context keys ───────────────────────────────────────────────
+// ── Context keys (local — not exported; middleware/ has its own)
 
 type contextKey string
 
 func (k contextKey) String() string { return "taskflow." + string(k) }
 
-// requestIDKey is used to store the request ID in the request context.
+// requestIDKey stores a request-scoped *slog.Logger in the context.
+// The raw ID string is stored separately via middleware.ContextWithRequestID
+// so middleware/x402.go can read it without importing this package.
 const requestIDKey = contextKey("request_id")
 
 // ── Middleware ──────────────────────────────────────────────────
@@ -68,9 +70,13 @@ func requestID(next http.Handler) http.Handler {
 		// Attach the ID to the response so callers can correlate.
 		w.Header().Set("X-Request-Id", id)
 
-		// Store the ID and a request-scoped logger in the context.
+		// Store the ID in context so downstream middleware (including
+		// x402) can read it via middleware.RequestIDFromContext.
+		ctx := middleware.ContextWithRequestID(r.Context(), id)
+
+		// Also store a request-scoped logger with the ID pre-attached.
 		logger := slog.Default().With("request_id", id)
-		ctx := context.WithValue(r.Context(), requestIDKey, logger)
+		ctx = context.WithValue(ctx, requestIDKey, logger)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -137,7 +143,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Passwords do not match", http.StatusBadRequest)
 			return
 		}
-		_ = password // TODO: bcrypt.GenerateFromPassword, insert into DB
+		// TODO: bcrypt.GenerateFromPassword(password), insert into DB
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

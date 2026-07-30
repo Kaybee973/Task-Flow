@@ -7,6 +7,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,30 @@ import (
 	"net/http"
 	"time"
 )
+
+// ── Request ID propagation ──────────────────────────────────────
+
+// requestIDCtxKey is an unexported context key used to store and
+// retrieve the request ID across middleware boundaries.
+type requestIDCtxKey struct{}
+
+// RequestIDFromContext extracts the request ID stored in the context
+// by the requestID middleware (see main.go). Returns empty string if
+// no ID is present (e.g. the request bypassed the middleware).
+func RequestIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(requestIDCtxKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// ContextWithRequestID returns a new context with the given request ID
+// stored under the key that RequestIDFromContext expects. This lets the
+// requestID middleware (in main.go) set the value without needing access
+// to the unexported key type.
+func ContextWithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDCtxKey{}, id)
+}
 
 // ─────────────────────────────────────────────────────────────
 // x402 Protocol Types
@@ -92,28 +117,28 @@ func (m *X402Middleware) Handler(next http.Handler) http.Handler {
 		// ── Decode the payment payload ───────────────────────
 		decoded, err := base64.StdEncoding.DecodeString(sigHeader)
 		if err != nil {
-			slog.Warn("x402: bad base64 in PAYMENT-SIGNATURE", "error", err)
+			slog.Warn("x402: bad base64 in PAYMENT-SIGNATURE", "error", err, "request_id", RequestIDFromContext(r.Context()))
 			m.writePaymentFailed(w, "invalid_encoding", "PAYMENT-SIGNATURE must be base64-encoded JSON")
 			return
 		}
 
 		var payload PaymentPayload
 		if err := json.Unmarshal(decoded, &payload); err != nil {
-			slog.Warn("x402: bad JSON in PAYMENT-SIGNATURE", "error", err)
+			slog.Warn("x402: bad JSON in PAYMENT-SIGNATURE", "error", err, "request_id", RequestIDFromContext(r.Context()))
 			m.writePaymentFailed(w, "invalid_format", "PAYMENT-SIGNATURE must be valid JSON")
 			return
 		}
 
 		// ── Validate the payment payload ─────────────────────
 		if err := m.validatePayload(payload, r); err != nil {
-			slog.Warn("x402: payload validation failed", "error", err)
+			slog.Warn("x402: payload validation failed", "error", err, "request_id", RequestIDFromContext(r.Context()))
 			m.writePaymentFailed(w, "validation_failed", err.Error())
 			return
 		}
 
 		// ── Verify the signature ─────────────────────────────
 		if !m.verifySignature(payload) {
-			slog.Warn("x402: invalid signature", "sender", payload.Sender)
+			slog.Warn("x402: invalid signature", "sender", payload.Sender, "request_id", RequestIDFromContext(r.Context()))
 			m.writePaymentFailed(w, "invalid_signature", "The payment signature could not be verified")
 			return
 		}
@@ -126,7 +151,7 @@ func (m *X402Middleware) Handler(next http.Handler) http.Handler {
 		m.writeSettlement(w, sr)
 
 		slog.Info("x402: payment accepted",
-			"sender", payload.Sender, "amount", payload.Amount, "method", r.Method, "path", r.URL.Path)
+			"sender", payload.Sender, "amount", payload.Amount, "method", r.Method, "path", r.URL.Path, "request_id", RequestIDFromContext(r.Context()))
 
 		next.ServeHTTP(w, r)
 	})
@@ -136,14 +161,24 @@ func (m *X402Middleware) Handler(next http.Handler) http.Handler {
 
 // writePaymentRequired writes HTTP 402 with a PAYMENT-REQUIRED header
 // and a JSON body describing the required payment.
+//
+// The requestId field is populated from the request context (set by the
+// requestID middleware) so payment callbacks can be correlated with the
+// original API request that triggered them.
 func (m *X402Middleware) writePaymentRequired(w http.ResponseWriter, r *http.Request) {
+	reqID := RequestIDFromContext(r.Context())
+	if reqID == "" {
+		// Fallback if requestID middleware is not in the chain.
+		reqID = fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+
 	pr := PaymentRequired{
 		Scheme:    "exact",
 		Amount:    m.config.Price,
 		Currency:  m.config.Currency,
 		Network:   m.config.Network,
 		PayTo:     m.config.PayTo,
-		RequestID: r.Method + " " + r.URL.Path + " " + r.Header.Get("X-Request-Id") + " " + fmt.Sprint(time.Now().UnixNano()),
+		RequestID: reqID,
 	}
 
 	encoded := base64EncodeJSON(pr)
