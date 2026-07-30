@@ -6,6 +6,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -37,11 +38,11 @@ func (e *TaskNotFound) Error() string {
 // TaskStore is the persistence contract for tasks. Handlers and
 // services depend on this interface, not a concrete implementation.
 type TaskStore interface {
-	Create(task Task) (Task, error)
-	GetByID(id string) (Task, error)
-	ListByProject(projectID string) ([]Task, error)
-	Update(id string, task Task) (Task, error)
-	Delete(id string) error
+	Create(ctx context.Context, task Task) (Task, error)
+	GetByID(ctx context.Context, id string) (Task, error)
+	ListByProject(ctx context.Context, projectID string) ([]Task, error)
+	Update(ctx context.Context, id string, task Task) (Task, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // ── In-Memory Implementation ───────────────────────────────────
@@ -64,7 +65,7 @@ func NewInMemoryTaskStore() *InMemoryTaskStore {
 
 // Create inserts a new task, assigns it a unique ID, and returns
 // the stored copy with timestamps populated.
-func (s *InMemoryTaskStore) Create(task Task) (Task, error) {
+func (s *InMemoryTaskStore) Create(ctx context.Context, task Task) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -84,7 +85,7 @@ func (s *InMemoryTaskStore) Create(task Task) (Task, error) {
 }
 
 // GetByID retrieves a single task by its ID.
-func (s *InMemoryTaskStore) GetByID(id string) (Task, error) {
+func (s *InMemoryTaskStore) GetByID(ctx context.Context, id string) (Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -97,7 +98,7 @@ func (s *InMemoryTaskStore) GetByID(id string) (Task, error) {
 
 // ListByProject returns all tasks belonging to the given project,
 // ordered by creation time (oldest first).
-func (s *InMemoryTaskStore) ListByProject(projectID string) ([]Task, error) {
+func (s *InMemoryTaskStore) ListByProject(ctx context.Context, projectID string) ([]Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -124,7 +125,7 @@ func (s *InMemoryTaskStore) ListByProject(projectID string) ([]Task, error) {
 // Update applies partial or full updates to an existing task.
 // Zero-value fields (empty string, nil slice) are left unchanged
 // unless they were explicitly set. UpdatedAt is always refreshed.
-func (s *InMemoryTaskStore) Update(id string, updates Task) (Task, error) {
+func (s *InMemoryTaskStore) Update(ctx context.Context, id string, updates Task) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -156,7 +157,7 @@ func (s *InMemoryTaskStore) Update(id string, updates Task) (Task, error) {
 
 // Delete removes a task by ID. Returns an error if the task does
 // not exist.
-func (s *InMemoryTaskStore) Delete(id string) error {
+func (s *InMemoryTaskStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -4,6 +4,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"tessst/storage"
@@ -30,7 +31,7 @@ func NewTaskService(store storage.TaskStore) *TaskService {
 }
 
 // CreateTask validates input and persists a new task.
-func (s *TaskService) CreateTask(title, description, projectID string, assignees []string) (storage.Task, error) {
+func (s *TaskService) CreateTask(ctx context.Context, title, description, projectID string, assignees []string) (storage.Task, error) {
 	if title == "" {
 		return storage.Task{}, ErrTitleRequired
 	}
@@ -46,20 +47,20 @@ func (s *TaskService) CreateTask(title, description, projectID string, assignees
 		Status:      "open",
 	}
 
-	return s.store.Create(task)
+	return s.store.Create(ctx, task)
 }
 
 // GetProjectTasks retrieves all tasks for a project.
-func (s *TaskService) GetProjectTasks(projectID string) ([]storage.Task, error) {
-	return s.store.ListByProject(projectID)
+func (s *TaskService) GetProjectTasks(ctx context.Context, projectID string) ([]storage.Task, error) {
+	return s.store.ListByProject(ctx, projectID)
 }
 
 // UpdateTask applies partial updates to an existing task.
 // Fields that are empty are left unchanged (except Status which
 // is always accepted if non-empty).
-func (s *TaskService) UpdateTask(id, title, description, status string, assignees []string) (storage.Task, error) {
+func (s *TaskService) UpdateTask(ctx context.Context, id, title, description, status string, assignees []string) (storage.Task, error) {
 	// Verify the task exists first.
-	existing, err := s.store.GetByID(id)
+	existing, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return storage.Task{}, err
 	}
@@ -84,11 +85,11 @@ func (s *TaskService) UpdateTask(id, title, description, status string, assignee
 		Assignees:   assignees,
 	}
 
-	return s.store.Update(id, updates)
+	return s.store.Update(ctx, id, updates)
 }
 
 // DeleteTask removes a task by ID. Returns an error if the task
 // does not exist.
-func (s *TaskService) DeleteTask(id string) error {
-	return s.store.Delete(id)
+func (s *TaskService) DeleteTask(ctx context.Context, id string) error {
+	return s.store.Delete(ctx, id)
 }

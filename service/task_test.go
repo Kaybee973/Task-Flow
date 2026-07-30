@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -14,8 +15,8 @@ import (
 type mockTaskStore struct {
 	tasks    map[string]storage.Task
 	nextID   int
-	createFn func(storage.Task) (storage.Task, error)
-	listFn   func(string) ([]storage.Task, error)
+	createFn func(context.Context, storage.Task) (storage.Task, error)
+	listFn   func(context.Context, string) ([]storage.Task, error)
 }
 
 func newMockStore() *mockTaskStore {
@@ -25,9 +26,9 @@ func newMockStore() *mockTaskStore {
 	}
 }
 
-func (m *mockTaskStore) Create(t storage.Task) (storage.Task, error) {
+func (m *mockTaskStore) Create(ctx context.Context, t storage.Task) (storage.Task, error) {
 	if m.createFn != nil {
-		return m.createFn(t)
+		return m.createFn(ctx, t)
 	}
 	t.ID = "task-" + itoa(m.nextID)
 	m.nextID++
@@ -38,7 +39,7 @@ func (m *mockTaskStore) Create(t storage.Task) (storage.Task, error) {
 	return t, nil
 }
 
-func (m *mockTaskStore) GetByID(id string) (storage.Task, error) {
+func (m *mockTaskStore) GetByID(ctx context.Context, id string) (storage.Task, error) {
 	t, ok := m.tasks[id]
 	if !ok {
 		return storage.Task{}, &storage.TaskNotFound{ID: id}
@@ -46,9 +47,9 @@ func (m *mockTaskStore) GetByID(id string) (storage.Task, error) {
 	return t, nil
 }
 
-func (m *mockTaskStore) ListByProject(projectID string) ([]storage.Task, error) {
+func (m *mockTaskStore) ListByProject(ctx context.Context, projectID string) ([]storage.Task, error) {
 	if m.listFn != nil {
-		return m.listFn(projectID)
+		return m.listFn(ctx, projectID)
 	}
 	var result []storage.Task
 	for _, t := range m.tasks {
@@ -59,7 +60,7 @@ func (m *mockTaskStore) ListByProject(projectID string) ([]storage.Task, error) 
 	return result, nil
 }
 
-func (m *mockTaskStore) Update(id string, updates storage.Task) (storage.Task, error) {
+func (m *mockTaskStore) Update(ctx context.Context, id string, updates storage.Task) (storage.Task, error) {
 	t, ok := m.tasks[id]
 	if !ok {
 		return storage.Task{}, &storage.TaskNotFound{ID: id}
@@ -83,7 +84,7 @@ func (m *mockTaskStore) Update(id string, updates storage.Task) (storage.Task, e
 	return t, nil
 }
 
-func (m *mockTaskStore) Delete(id string) error {
+func (m *mockTaskStore) Delete(ctx context.Context, id string) error {
 	if _, ok := m.tasks[id]; !ok {
 		return &storage.TaskNotFound{ID: id}
 	}
@@ -104,7 +105,7 @@ func itoa(n int) string {
 func TestTaskService_CreateTask_Success(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	task, err := svc.CreateTask("Build feature", "Implement the thing", "proj-1", []string{"alice"})
+	task, err := svc.CreateTask(context.Background(), "Build feature", "Implement the thing", "proj-1", []string{"alice"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestTaskService_CreateTask_Success(t *testing.T) {
 func TestTaskService_CreateTask_EmptyTitle(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	_, err := svc.CreateTask("", "desc", "proj-1", nil)
+	_, err := svc.CreateTask(context.Background(), "", "desc", "proj-1", nil)
 	if err == nil {
 		t.Fatal("expected error for empty title")
 	}
@@ -135,7 +136,7 @@ func TestTaskService_CreateTask_EmptyTitle(t *testing.T) {
 func TestTaskService_CreateTask_EmptyProjectID(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	_, err := svc.CreateTask("Task", "desc", "", nil)
+	_, err := svc.CreateTask(context.Background(), "Task", "desc", "", nil)
 	if err == nil {
 		t.Fatal("expected error for empty project ID")
 	}
@@ -147,7 +148,7 @@ func TestTaskService_CreateTask_EmptyProjectID(t *testing.T) {
 func TestTaskService_CreateTask_NoAssignees(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	task, err := svc.CreateTask("Solo task", "", "proj-1", nil)
+	task, err := svc.CreateTask(context.Background(), "Solo task", "", "proj-1", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestTaskService_GetProjectTasks_ReturnsTasks(t *testing.T) {
 		ID: "task-3", Title: "C", ProjectID: "proj-alpha", Status: "open",
 	}
 
-	tasks, err := svc.GetProjectTasks("proj-alpha")
+	tasks, err := svc.GetProjectTasks(context.Background(), "proj-alpha")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -185,7 +186,7 @@ func TestTaskService_GetProjectTasks_ReturnsTasks(t *testing.T) {
 func TestTaskService_GetProjectTasks_EmptyProject(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	tasks, err := svc.GetProjectTasks("empty-project")
+	tasks, err := svc.GetProjectTasks(context.Background(), "empty-project")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -201,10 +202,10 @@ func TestTaskService_UpdateTask_Success(t *testing.T) {
 	svc := NewTaskService(mock)
 
 	// Create a task first
-	created, _ := svc.CreateTask("Original", "Original desc", "proj-1", []string{"bob"})
+	created, _ := svc.CreateTask(context.Background(), "Original", "Original desc", "proj-1", []string{"bob"})
 
 	// Update title and status
-	updated, err := svc.UpdateTask(created.ID, "Updated Title", "", "in-progress", nil)
+	updated, err := svc.UpdateTask(context.Background(), created.ID, "Updated Title", "", "in-progress", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -228,7 +229,7 @@ func TestTaskService_UpdateTask_Success(t *testing.T) {
 func TestTaskService_UpdateTask_NotFound(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	_, err := svc.UpdateTask("task-999", "Title", "", "", nil)
+	_, err := svc.UpdateTask(context.Background(), "task-999", "Title", "", "", nil)
 	if err == nil {
 		t.Fatal("expected error for non-existent task")
 	}
@@ -242,10 +243,10 @@ func TestTaskService_UpdateTask_ReplaceAssignees(t *testing.T) {
 	mock := newMockStore()
 	svc := NewTaskService(mock)
 
-	created, _ := svc.CreateTask("T", "", "proj-1", []string{"alice", "bob"})
+	created, _ := svc.CreateTask(context.Background(), "T", "", "proj-1", []string{"alice", "bob"})
 
 	// Replace assignees with a new set
-	updated, err := svc.UpdateTask(created.ID, "", "", "", []string{"charlie"})
+	updated, err := svc.UpdateTask(context.Background(), created.ID, "", "", "", []string{"charlie"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,10 +260,10 @@ func TestTaskService_UpdateTask_ClearAssignees(t *testing.T) {
 	mock := newMockStore()
 	svc := NewTaskService(mock)
 
-	created, _ := svc.CreateTask("T", "", "proj-1", []string{"alice"})
+	created, _ := svc.CreateTask(context.Background(), "T", "", "proj-1", []string{"alice"})
 
 	// Set assignees to empty slice (not nil)
-	updated, err := svc.UpdateTask(created.ID, "", "", "", []string{})
+	updated, err := svc.UpdateTask(context.Background(), created.ID, "", "", "", []string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -281,15 +282,15 @@ func TestTaskService_DeleteTask_Success(t *testing.T) {
 	mock := newMockStore()
 	svc := NewTaskService(mock)
 
-	created, _ := svc.CreateTask("Delete me", "", "proj-1", nil)
+	created, _ := svc.CreateTask(context.Background(), "Delete me", "", "proj-1", nil)
 
-	err := svc.DeleteTask(created.ID)
+	err := svc.DeleteTask(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Verify it's gone
-	_, err = svc.GetProjectTasks("proj-1")
+	_, err = svc.GetProjectTasks(context.Background(), "proj-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +299,7 @@ func TestTaskService_DeleteTask_Success(t *testing.T) {
 func TestTaskService_DeleteTask_NotFound(t *testing.T) {
 	svc := NewTaskService(newMockStore())
 
-	err := svc.DeleteTask("task-999")
+	err := svc.DeleteTask(context.Background(), "task-999")
 	if err == nil {
 		t.Fatal("expected error for non-existent task")
 	}
@@ -315,19 +316,19 @@ func TestTaskService_FullLifecycle(t *testing.T) {
 	svc := NewTaskService(mock)
 
 	// Create
-	task, err := svc.CreateTask("Write tests", "Add unit tests", "proj-api", []string{"tester"})
+	task, err := svc.CreateTask(context.Background(), "Write tests", "Add unit tests", "proj-api", []string{"tester"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read via project list
-	tasks, _ := svc.GetProjectTasks("proj-api")
+	tasks, _ := svc.GetProjectTasks(context.Background(), "proj-api")
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
 	}
 
 	// Update
-	task, err = svc.UpdateTask(task.ID, "", "Add comprehensive tests", "done", nil)
+	task, err = svc.UpdateTask(context.Background(), task.ID, "", "Add comprehensive tests", "done", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,12 +340,12 @@ func TestTaskService_FullLifecycle(t *testing.T) {
 	}
 
 	// Delete
-	if err := svc.DeleteTask(task.ID); err != nil {
+	if err := svc.DeleteTask(context.Background(), task.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify deletion
-	_, err = svc.UpdateTask(task.ID, "", "", "", nil)
+	_, err = svc.UpdateTask(context.Background(), task.ID, "", "", "", nil)
 	if err == nil {
 		t.Error("expected error after deletion")
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ── Compile-time check: *PostgresTaskStore implements TaskStore ──
+// Compile-time check: *PostgresTaskStore implements TaskStore.
 var _ TaskStore = (*PostgresTaskStore)(nil)
 
 // PostgresTaskStore implements TaskStore backed by a PostgreSQL
@@ -80,7 +80,7 @@ func (s *PostgresTaskStore) migrate(ctx context.Context) error {
 
 // Create inserts a new task and returns it with generated ID and
 // timestamps. IDs are ULID-style timestamps with a random suffix.
-func (s *PostgresTaskStore) Create(task Task) (Task, error) {
+func (s *PostgresTaskStore) Create(ctx context.Context, task Task) (Task, error) {
 	if task.Status == "" {
 		task.Status = "open"
 	}
@@ -103,7 +103,7 @@ func (s *PostgresTaskStore) Create(task Task) (Task, error) {
 		INSERT INTO tasks (id, title, description, status, project_id, assignees, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
-	_, err := s.pool.Exec(context.Background(), sql,
+	_, err := s.pool.Exec(ctx, sql,
 		task.ID, task.Title, task.Description, task.Status,
 		task.ProjectID, assignees, task.CreatedAt, task.UpdatedAt,
 	)
@@ -115,12 +115,12 @@ func (s *PostgresTaskStore) Create(task Task) (Task, error) {
 }
 
 // GetByID retrieves a single task by ID.
-func (s *PostgresTaskStore) GetByID(id string) (Task, error) {
+func (s *PostgresTaskStore) GetByID(ctx context.Context, id string) (Task, error) {
 	sql := `
 		SELECT id, title, description, status, project_id, assignees, created_at, updated_at
 		FROM tasks WHERE id = $1
 	`
-	row := s.pool.QueryRow(context.Background(), sql, id)
+	row := s.pool.QueryRow(ctx, sql, id)
 
 	task, err := scanTask(row)
 	if err != nil {
@@ -134,14 +134,14 @@ func (s *PostgresTaskStore) GetByID(id string) (Task, error) {
 
 // ListByProject returns all tasks for a project, ordered by
 // creation time ascending.
-func (s *PostgresTaskStore) ListByProject(projectID string) ([]Task, error) {
+func (s *PostgresTaskStore) ListByProject(ctx context.Context, projectID string) ([]Task, error) {
 	sql := `
 		SELECT id, title, description, status, project_id, assignees, created_at, updated_at
 		FROM tasks
 		WHERE project_id = $1
 		ORDER BY created_at ASC
 	`
-	rows, err := s.pool.Query(context.Background(), sql, projectID)
+	rows, err := s.pool.Query(ctx, sql, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list by project: %w", err)
 	}
@@ -164,7 +164,7 @@ func (s *PostgresTaskStore) ListByProject(projectID string) ([]Task, error) {
 
 // Update applies partial updates to an existing task. Only non-zero
 // fields are applied. UpdatedAt is always refreshed.
-func (s *PostgresTaskStore) Update(id string, updates Task) (Task, error) {
+func (s *PostgresTaskStore) Update(ctx context.Context, id string, updates Task) (Task, error) {
 	now := time.Now().UTC()
 
 	// Build a dynamic UPDATE statement for non-zero fields.
@@ -214,7 +214,7 @@ func (s *PostgresTaskStore) Update(id string, updates Task) (Task, error) {
 		argIdx,
 	)
 
-	tag, err := s.pool.Exec(context.Background(), sql, args...)
+	tag, err := s.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return Task{}, fmt.Errorf("postgres: update: %w", err)
 	}
@@ -223,13 +223,13 @@ func (s *PostgresTaskStore) Update(id string, updates Task) (Task, error) {
 	}
 
 	// Return the updated row
-	return s.GetByID(id)
+	return s.GetByID(ctx, id)
 }
 
 // Delete removes a task by ID.
-func (s *PostgresTaskStore) Delete(id string) error {
+func (s *PostgresTaskStore) Delete(ctx context.Context, id string) error {
 	sql := `DELETE FROM tasks WHERE id = $1`
-	tag, err := s.pool.Exec(context.Background(), sql, id)
+	tag, err := s.pool.Exec(ctx, sql, id)
 	if err != nil {
 		return fmt.Errorf("postgres: delete: %w", err)
 	}

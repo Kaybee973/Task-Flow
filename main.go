@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"tessst/middleware"
 	"tessst/service"
@@ -221,7 +225,7 @@ func (h *apiHandlers) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.svc.CreateTask(req.Title, req.Description, req.ProjectID, req.Assignees)
+	task, err := h.svc.CreateTask(r.Context(), req.Title, req.Description, req.ProjectID, req.Assignees)
 	if err != nil {
 		writeJSONError(w, "creation_failed", err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -240,7 +244,7 @@ func (h *apiHandlers) getProjectTasks(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
 	log.Printf("API get project tasks: project=%s", projectID)
 
-	tasks, err := h.svc.GetProjectTasks(projectID)
+	tasks, err := h.svc.GetProjectTasks(r.Context(), projectID)
 	if err != nil {
 		writeJSONError(w, "internal_error", err.Error(), http.StatusInternalServerError)
 		return
@@ -278,7 +282,7 @@ func (h *apiHandlers) updateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.svc.UpdateTask(taskID, req.Title, req.Description, req.Status, req.Assignees)
+	task, err := h.svc.UpdateTask(r.Context(), taskID, req.Title, req.Description, req.Status, req.Assignees)
 	if err != nil {
 		switch err.(type) {
 		case *storage.TaskNotFound:
@@ -301,7 +305,7 @@ func (h *apiHandlers) deleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
 	log.Printf("API delete task: id=%s", taskID)
 
-	if err := h.svc.DeleteTask(taskID); err != nil {
+	if err := h.svc.DeleteTask(r.Context(), taskID); err != nil {
 		switch err.(type) {
 		case *storage.TaskNotFound:
 			writeJSONError(w, "not_found", err.Error(), http.StatusNotFound)
@@ -333,29 +337,15 @@ func writeJSONError(w http.ResponseWriter, code, message string, status int) {
 	})
 }
 
-// ── Main ────────────────────────────────────────────────────────
-func main() {
-	// ── Dependencies ───────────────────────────────────────────
-	// Use PostgreSQL when DATABASE_URL is set, otherwise fall
-	// back to the in-memory store (great for development).
-	var store storage.TaskStore
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		ctx := context.Background()
-		pgStore, err := storage.NewPostgresTaskStore(ctx, dbURL)
-		if err != nil {
-			log.Fatalf("failed to connect to PostgreSQL: %v", err)
-		}
-		defer pgStore.Close()
-		store = pgStore
-		log.Println("Using PostgreSQL storage")
-	} else {
-		store = storage.NewInMemoryTaskStore()
-		log.Println("Using in-memory storage (set DATABASE_URL for PostgreSQL)")
-	}
+// ── Server ─────────────────────────────────────────────────────────
 
-	svc := service.NewTaskService(store)
-	api := newAPIHandlers(svc)
+// shutdownTimeout is the maximum time to wait for in-flight requests
+// to complete after receiving a shutdown signal.
+const shutdownTimeout = 10 * time.Second
 
+// newRouter builds the http.Handler (mux) with all routes and
+// middleware wired. Extracted so tests and main() can share it.
+func newRouter(api *apiHandlers) http.Handler {
 	mux := http.NewServeMux()
 
 	// ── x402 Payment Middleware ──────────────────────────────
@@ -401,16 +391,94 @@ func main() {
 		http.NotFound(w, r)
 	})
 
+	return logging(mux)
+}
+
+// ── Main ────────────────────────────────────────────────────────
+func main() {
+	// ── Dependencies ───────────────────────────────────────────
+	// Use PostgreSQL when DATABASE_URL is set, otherwise fall
+	// back to the in-memory store (great for development).
+	var (
+		store   storage.TaskStore
+		closers []func() // things to clean up on shutdown
+	)
+
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		ctx := context.Background()
+		pgStore, err := storage.NewPostgresTaskStore(ctx, dbURL)
+		if err != nil {
+			log.Fatalf("failed to connect to PostgreSQL: %v", err)
+		}
+		closers = append(closers, pgStore.Close)
+		store = pgStore
+		log.Println("Using PostgreSQL storage")
+	} else {
+		store = storage.NewInMemoryTaskStore()
+		log.Println("Using in-memory storage (set DATABASE_URL for PostgreSQL)")
+	}
+
+	svc := service.NewTaskService(store)
+	api := newAPIHandlers(svc)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Server running at http://localhost:%s", port)
-	log.Printf("x402-protected API endpoints:")
-	log.Printf("  POST   /api/tasks")
-	log.Printf("  GET    /api/projects/{id}/tasks")
-	log.Printf("  PUT    /api/tasks/{id}")
-	log.Printf("  DELETE /api/tasks/{id}")
-	log.Fatal(http.ListenAndServe(":"+port, logging(mux)))
+	// ── HTTP Server ───────────────────────────────────────────
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: newRouter(api),
+	}
+
+	// ── Signal handling (graceful shutdown) ───────────────────
+	// Listen for OS interrupt / terminate signals in a separate
+	// goroutine. When one arrives, drain in-flight requests and
+	// shut down cleanly.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start the server in a goroutine so we can listen for signals.
+	// If ListenAndServe fails for a reason other than a clean shutdown
+	// (e.g. port already in use), we log.Fatalf immediately — there's
+	// nothing to gracefully shut down in that case.
+	go func() {
+		log.Printf("Server running at http://localhost:%s", port)
+		log.Printf("x402-protected API endpoints:")
+		log.Printf("  POST   /api/tasks")
+		log.Printf("  GET    /api/projects/{id}/tasks")
+		log.Printf("  PUT    /api/tasks/{id}")
+		log.Printf("  DELETE /api/tasks/{id}")
+		log.Printf("Graceful shutdown enabled — send SIGINT/SIGTERM to stop")
+
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Block until we receive a signal.
+	sig := <-stop
+	log.Printf("Received signal: %v — starting graceful shutdown...", sig)
+
+	// Create a context with a timeout so the server can't wait
+	// indefinitely for in-flight requests to finish.
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	// Shutdown gracefully: stop accepting new connections and
+	// wait for active ones to finish (up to shutdownTimeout).
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Graceful shutdown incomplete: %v", err)
+		if err := srv.Close(); err != nil {
+			log.Printf("Force close error: %v", err)
+		}
+	}
+
+	// Close any resources that need cleanup (e.g. Postgres pool).
+	for _, closeFn := range closers {
+		closeFn()
+	}
+
+	log.Println("Server stopped cleanly")
 }
