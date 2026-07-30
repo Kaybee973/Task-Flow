@@ -114,6 +114,41 @@ type signFields struct {
 	Sender    string `json:"sender"`
 }
 
+// wrongSignatureHeader returns a PAYMENT-SIGNATURE header value signed with
+// a DIFFERENT key than the harness's sender, producing an invalid signature.
+func (h *testHarness) wrongSignatureHeader(t *testing.T) string {
+	t.Helper()
+
+	wrongKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg, _ := json.Marshal(signFields{
+		Scheme:    "exact",
+		Amount:    "$0.001",
+		Currency:  "USDC",
+		Network:   "eip155:84532",
+		RequestID: "request-1",
+		Sender:    h.sender,
+	})
+	eip191 := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(msg), msg)
+	hash := crypto.Keccak256Hash([]byte(eip191))
+	sig, _ := crypto.Sign(hash.Bytes(), wrongKey)
+
+	payload := map[string]interface{}{
+		"scheme":    "exact",
+		"amount":    "$0.001",
+		"currency":  "USDC",
+		"network":   "eip155:84532",
+		"requestId": "request-1",
+		"signature": "0x" + hex.EncodeToString(sig),
+		"sender":    h.sender,
+	}
+	b, _ := json.Marshal(payload)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
 // ── Tests: Unpaid requests → 402 ──────────────────────────────
 
 func TestHandler_UnpaidRequest_Returns402(t *testing.T) {
@@ -168,41 +203,10 @@ func TestHandler_UnpaidRequest_Returns402(t *testing.T) {
 func TestHandler_InvalidSignature_Returns402(t *testing.T) {
 	h := newTestHarness(t)
 
-	// Sign with a DIFFERENT key than the sender
-	wrongKey, err := crypto.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Use the harness's sender but sign with wrongKey
-	msg, _ := json.Marshal(signFields{
-		Scheme:    "exact",
-		Amount:    "$0.001",
-		Currency:  "USDC",
-		Network:   "eip155:84532",
-		RequestID: "request-1",
-		Sender:    h.sender,
-	})
-	eip191 := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(msg), msg)
-	hash := crypto.Keccak256Hash([]byte(eip191))
-	sig, _ := crypto.Sign(hash.Bytes(), wrongKey)
-
-	payload := map[string]interface{}{
-		"scheme":    "exact",
-		"amount":    "$0.001",
-		"currency":  "USDC",
-		"network":   "eip155:84532",
-		"requestId": "request-1",
-		"signature": "0x" + hex.EncodeToString(sig),
-		"sender":    h.sender,
-	}
-	b, _ := json.Marshal(payload)
-	badSig := base64.StdEncoding.EncodeToString(b)
-
 	req := httptest.NewRequest("POST", "/api/tasks",
 		strings.NewReader(`{"title":"T","project_id":"p"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("PAYMENT-SIGNATURE", badSig)
+	req.Header.Set("PAYMENT-SIGNATURE", h.wrongSignatureHeader(t))
 
 	rec := httptest.NewRecorder()
 	h.server.Config.Handler.ServeHTTP(rec, req)
@@ -215,6 +219,41 @@ func TestHandler_InvalidSignature_Returns402(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&body)
 	if body["error"] != "invalid_signature" {
 		t.Errorf("expected error=invalid_signature, got %v", body["error"])
+	}
+}
+
+func TestHandler_InvalidSignature_HasRequestIdHeader(t *testing.T) {
+	h := newTestHarness(t)
+
+	req := httptest.NewRequest("POST", "/api/tasks",
+		strings.NewReader(`{"title":"T","project_id":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("PAYMENT-SIGNATURE", h.wrongSignatureHeader(t))
+
+	rec := httptest.NewRecorder()
+	h.server.Config.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected HTTP 402, got %d", rec.Code)
+	}
+
+	// X-Request-Id must be present even on failed-payment responses
+	reqID := rec.Header().Get("X-Request-Id")
+	if reqID == "" {
+		t.Fatal("expected X-Request-Id header on invalid signature 402")
+	}
+	if len(reqID) < 8 {
+		t.Errorf("expected X-Request-Id at least 8 chars, got %q (len=%d)", reqID, len(reqID))
+	}
+
+	// writePaymentFailed does NOT include a payment_required / requestId in the body
+	var body map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&body)
+	if body["error"] != "invalid_signature" {
+		t.Errorf("expected error=invalid_signature, got %v", body["error"])
+	}
+	if _, ok := body["payment_required"]; ok {
+		t.Error("expected no payment_required field in invalid signature response body")
 	}
 }
 
@@ -572,6 +611,93 @@ func TestHandler_Health_AlsoWorks(t *testing.T) {
 }
 
 // ── Tests: X-Request-Id header ────────────────────────────────
+
+func TestHandler_PaymentRequired_RequestIdMatchesHeader(t *testing.T) {
+	h := newTestHarness(t)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"POST /api/tasks", "POST", "/api/tasks", `{"title":"x","project_id":"p"}`},
+		{"GET /api/projects/p1/tasks", "GET", "/api/projects/p1/tasks", ""},
+		{"PUT /api/tasks/task-x", "PUT", "/api/tasks/task-x", `{"status":"done"}`},
+		{"DELETE /api/tasks/task-x", "DELETE", "/api/tasks/task-x", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req *http.Request
+			if tt.body != "" {
+				req = httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+				req.Header.Set("Content-Type", "application/json")
+			} else {
+				req = httptest.NewRequest(tt.method, tt.path, nil)
+			}
+
+			rec := httptest.NewRecorder()
+			h.server.Config.Handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusPaymentRequired {
+				t.Fatalf("expected HTTP 402, got %d", rec.Code)
+			}
+
+			// ── Source of truth: X-Request-Id response header ────
+			reqID := rec.Header().Get("X-Request-Id")
+			if reqID == "" {
+				t.Fatal("expected non-empty X-Request-Id header on 402 response")
+			}
+
+			// ── Check 1: JSON body payment_required.requestId ────
+			var body map[string]interface{}
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("failed to decode 402 body: %v", err)
+			}
+
+			pr, ok := body["payment_required"].(map[string]interface{})
+			if !ok {
+				t.Fatal("expected payment_required object in 402 body")
+			}
+
+			bodyReqID, ok := pr["requestId"].(string)
+			if !ok || bodyReqID == "" {
+				t.Fatal("expected non-empty requestId in payment_required body")
+			}
+
+			if bodyReqID != reqID {
+				t.Errorf("body requestId mismatch: X-Request-Id header=%q, body.requestId=%q", reqID, bodyReqID)
+			}
+
+			// ── Check 2: PAYMENT-REQUIRED header (base64-decoded) ─
+			prHeader := rec.Header().Get("PAYMENT-REQUIRED")
+			if prHeader == "" {
+				t.Fatal("expected non-empty PAYMENT-REQUIRED header")
+			}
+
+			decoded, err := base64.StdEncoding.DecodeString(prHeader)
+			if err != nil {
+				t.Fatalf("PAYMENT-REQUIRED header is not valid base64: %v", err)
+			}
+
+			var headerPR struct {
+				RequestID string `json:"requestId"`
+			}
+			if err := json.Unmarshal(decoded, &headerPR); err != nil {
+				t.Fatalf("PAYMENT-REQUIRED header is not valid JSON: %v", err)
+			}
+
+			if headerPR.RequestID == "" {
+				t.Fatal("expected non-empty requestId in PAYMENT-REQUIRED header")
+			}
+
+			if headerPR.RequestID != reqID {
+				t.Errorf("PAYMENT-REQUIRED header requestId mismatch: X-Request-Id header=%q, PAYMENT-REQUIRED.requestId=%q", reqID, headerPR.RequestID)
+			}
+		})
+	}
+}
 
 func TestHandler_RequestID_SetOnAllEndpoints(t *testing.T) {
 	h := newTestHarness(t)
