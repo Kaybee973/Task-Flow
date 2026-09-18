@@ -1,27 +1,24 @@
 # TaskFlow
 
-TaskFlow is a Go-based task management application built for clarity, operational visibility, and programmable automation. It combines a human-friendly dashboard with a payment-gated API layer for external integrations, AI tools, and agent-driven workflows.
+TaskFlow is a Go-based workflow platform designed to help teams coordinate work with clarity, visibility, and programmable automation. It combines a polished task dashboard with a secure, machine-readable API layer for external tools, automation workflows, and AI-assisted operations.
 
 ## Why this project matters
 
-Modern teams need a simple way to organize work, track status, and expose operational capabilities to tools without sacrificing trust or control. TaskFlow addresses this by combining:
+Modern teams increasingly rely on fragmented systems: dashboards, chat tools, automation agents, and external services that all need a common operational layer. TaskFlow addresses this gap by providing a structured workflow system that is both human-friendly and compatible with programmable integrations.
 
-- a clean browser-based task dashboard for team coordination
-- structured API access for automation and external systems
-- passwordless-like but secure session patterns for web access
-- x402 payment gating for routes intended for external or paid access
-- a service-oriented Go architecture that is easy to extend and deploy
+The project is built around a simple principle: operational work should be easy for people to manage and easy for software to access securely. This makes it a strong base for collaboration, automation, and future blockchain-aware payment workflows.
 
 ## Product overview
 
 TaskFlow supports:
 
-- task creation, updates, status changes, and deletion
-- project-based organization for work streams
-- task detail pages and management UI
-- file upload support for task-related artifacts
-- health checks and operational monitoring
-- protected API access for machine consumers via x402
+- task creation, updates, status transitions, and deletion
+- project-based task organization for work streams and team delivery
+- task detail views with a workflow-first interface
+- file attachment support for operational context
+- health and operational monitoring endpoints
+- protected API access for machine consumers and external integrations
+- a clean foundation for future identity, permission, and payment-enriched workflows
 
 ## Architecture
 
@@ -50,7 +47,7 @@ Middleware/x402 verification
 - `/tasks/{id}` — task details and updates
 - `/upload` — file upload page
 - `/profile` — user profile page
-- `/docs` — project documentation page
+- `/docs` — project documentation and submission summary
 - `/healthz` — health endpoint
 - `/api/tasks` — x402-protected task creation endpoint
 - `/api/projects/{id}/tasks` — x402-protected project task listing
@@ -102,15 +99,15 @@ The JSON API is designed for external tools and agent systems. The current payme
 
 These endpoints enforce x402-style payment requirements and return `402 Payment Required` challenge responses when signatures or payment validation are missing or invalid.
 
-## Security approach
+## Security and trust model
 
-The project is organized around a layered security model:
+The project is organized around a layered security model designed for both human users and automated clients:
 
-- web routes are separate from API routes
-- service validation enforces core task rules
+- web routes are separate from API routes to keep user flows and machine workflows cleanly isolated
+- service validation enforces core task rules before persistence
 - middleware checks are isolated to request protection concerns
-- API verification uses cryptographic signature validation and x402 challenge logic
-- responses remain structured and machine-readable for automation workflows
+- API verification relies on cryptographic signature validation and x402 challenge logic
+- responses remain structured and machine-readable for automation workflows and external tools
 
 ## Project structure
 
@@ -171,4 +168,6 @@ Planned next steps include:
 
 ## Status
 
-This project is a functional prototype and a solid foundation for a production-ready workflow tool. It is especially well-suited for demos, developer showcases, and submission materials where a credible mix of product UI and programmable API architecture is valued.
+This project is a functional prototype and a strong foundation for a production-ready workflow tool. It is especially well-suited for demos, developer showcases, and grant or submission materials where a credible mix of product UX, backend architecture, and programmable API access is valued.
+
+The codebase demonstrates a practical path from concept to deployable workflow platform, with room to evolve into a more complete collaboration layer as identity, permissions, and payment integrations mature.
