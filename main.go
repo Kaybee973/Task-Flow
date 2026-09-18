@@ -161,6 +161,16 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	serveTemplate(w, "dashboard.html", nil)
 }
 
+// GET /docs — documentation and project overview page
+func docsHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		serveTemplate(w, "docs.html", nil)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // GET  /tasks            — list all tasks (HTML)
 // POST /tasks            — create task (HTML form POST)
 // GET  /tasks/{id}       — task detail
@@ -476,6 +486,8 @@ func newRouter(api *apiHandlers, p pinger) http.Handler {
 
 	// ── Static assets ────────────────────────────────────────
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	mux.HandleFunc("/docs", docsHandler)
+	mux.HandleFunc("/documentation", docsHandler)
 
 	// ── Auth routes (no auth guard needed) ───────────────────
 	mux.HandleFunc("/login", loginHandler)

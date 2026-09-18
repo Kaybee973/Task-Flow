@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow Documentation</title>
+  <meta name="description" content="TaskFlow is a team task management system with secure workflows, project tracking, and x402 payment-gated API access for autonomous tools and agents." />
+  <link rel="icon" href="/static/images/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="/dashboard" class="navbar-brand"><span>Task</span>Flow</a>
+      <div class="navbar-nav">
+        <a href="/dashboard" class="nav-link">Dashboard</a>
+        <a href="/docs" class="nav-link active">Docs</a>
+        <a href="/healthz" class="nav-link">Health</a>
+      </div>
+      <div style="display:flex; align-items:center; gap:.75rem;">
+        <div class="nav-avatar" title="Profile" onclick="location.href='/profile'">TF</div>
+        <form method="POST" action="/logout" style="margin:0;">
+          <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </nav>
+
+  <main class="docs-shell">
+    <section class="docs-hero">
+      <div class="container docs-hero-inner">
+        <span class="route-pill"><span class="method">project</span> TaskFlow</span>
+        <h1>TaskFlow Documentation</h1>
+        <p>
+          A modern team task management system built in Go, designed for operational clarity,
+          secure workflows, and programmable integrations for tools and autonomous agents.
+        </p>
+        <div class="docs-actions">
+          <a href="/dashboard" class="btn btn-primary">Open dashboard</a>
+          <a href="#architecture" class="btn btn-ghost">Explore architecture</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="container docs-grid">
+      <aside class="docs-sidebar">
+        <div class="docs-sidebar-card">
+          <div class="sidebar-label">On this page</div>
+          <a href="#overview">Overview</a>
+          <a href="#features">Features</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#api">API</a>
+          <a href="#security">Security</a>
+          <a href="#setup">Setup</a>
+          <a href="#roadmap">Roadmap</a>
+        </div>
+      </aside>
+
+      <article class="docs-content">
+        <section id="overview" class="doc-section">
+          <div class="section-kicker">Overview</div>
+          <h2>Built for teams that need order, visibility, and programmable access.</h2>
+          <p>
+            TaskFlow combines a clean collaborative dashboard with a robust API layer. It is built to help teams
+            coordinate delivery, assign work, track progress, and securely expose task operations to external clients
+            and AI-driven tooling without compromising trust or access control.
+          </p>
+          <p>
+            The product emphasizes a practical balance: human-friendly workflows for task coordination and machine-readable
+            endpoints for external automation. Every major workflow is structured so it can scale from a single team to
+            multi-project operational environments.
+          </p>
+
+          <div class="feature-grid three-up">
+            <div class="mini-card">
+              <div class="mini-card-title">Team operations</div>
+              <p>Projects, task tracking, work status, assignment workflows, and file handling.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">Agent-ready API</div>
+              <p>Secure, versioned endpoints designed for tools and external systems to interact programmatically.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">Programmable payments</div>
+              <p>x402-based protection allows API access to be gated via signed payment verification.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" class="doc-section">
+          <div class="section-kicker">Core features</div>
+          <h2>What TaskFlow provides</h2>
+          <div class="feature-grid">
+            <div class="mini-card">
+              <div class="mini-card-title">Task dashboard</div>
+              <p>Track work by status, urgency, project, and workload across an operational overview.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">Project-based tasking</div>
+              <p>Group work by project so teams can keep delivery streams organized and visible.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">File attachments</div>
+              <p>Upload and attach important artifacts to tasks to keep context close to execution.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">Authentication flows</div>
+              <p>Support for registration, login, logout, and protected browsing routes for authenticated users.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">JSON API</div>
+              <p>Structured endpoints for create, list, update, and delete operations using clear task payloads.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">x402 enforcement</div>
+              <p>Protect paid or externally consumed endpoints with signed verification and HTTP 402 challenge flows.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="architecture" class="doc-section">
+          <div class="section-kicker">Architecture</div>
+          <h2>Service design and runtime model</h2>
+          <div class="architecture-box">
+            <div class="arch-layer">
+              <div class="arch-pill">Web UI</div>
+              <p>HTML dashboards, auth pages, task detail pages, and profile management.</p>
+            </div>
+            <div class="arch-layer">
+              <div class="arch-pill">HTTP Router</div>
+              <p>Go net/http mux handles user pages, static assets, health checks, and API paths.</p>
+            </div>
+            <div class="arch-layer">
+              <div class="arch-pill">Service Layer</div>
+              <p>Business logic validates task creation, updates, and status transitions.</p>
+            </div>
+            <div class="arch-layer">
+              <div class="arch-pill">Storage Layer</div>
+              <p>Pluggable TaskStore abstraction supports in-memory usage and PostgreSQL-backed persistence.</p>
+            </div>
+            <div class="arch-layer">
+              <div class="arch-pill">Protection Layer</div>
+              <p>x402 middleware enforces payment or signed access requirements on external API routes.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="api" class="doc-section">
+          <div class="section-kicker">API</div>
+          <h2>Endpoints and usage patterns</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Route</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>GET</td><td>/healthz</td><td>Health and uptime check</td></tr>
+              <tr><td>GET</td><td>/dashboard</td><td>Main task dashboard</td></tr>
+              <tr><td>GET</td><td>/tasks</td><td>Task listing UI</td></tr>
+              <tr><td>POST</td><td>/tasks</td><td>Create a task</td></tr>
+              <tr><td>GET</td><td>/tasks/{id}</td><td>Task detail page</td></tr>
+              <tr><td>POST</td><td>/tasks/{id}</td><td>Update task</td></tr>
+              <tr><td>POST</td><td>/api/tasks</td><td>Create task via protected API</td></tr>
+              <tr><td>GET</td><td>/api/projects/{id}/tasks</td><td>List tasks for a project</td></tr>
+              <tr><td>PUT</td><td>/api/tasks/{id}</td><td>Update task via API</td></tr>
+              <tr><td>DELETE</td><td>/api/tasks/{id}</td><td>Delete task via API</td></tr>
+            </tbody>
+          </table>
+
+          <div class="code-block">
+            <pre>curl http://localhost:8080/api/projects/proj-123/tasks \
+  -H "PAYMENT-SIGNATURE: &lt;base64-encoded-signature&gt;"</pre>
+          </div>
+        </section>
+
+        <section id="security" class="doc-section">
+          <div class="section-kicker">Security and access control</div>
+          <h2>Designed for secure access and verifiable API use</h2>
+          <p>
+            TaskFlow keeps the app layer straightforward while adding strong developer-facing controls. The web UI routes
+            are separated from the machine-readable API, and the protected API endpoints enforce x402-level challenge and
+            signature verification before returning data.
+          </p>
+          <ul class="bullet-list">
+            <li>Session-aware web routes for authenticated human users</li>
+            <li>Structured JSON error responses for API callers</li>
+            <li>ECDSA-based verification for x402 payment signatures</li>
+            <li>Domain-specific business validation for task creation and updates</li>
+            <li>Graceful shutdown and structured JSON logging for operations visibility</li>
+          </ul>
+        </section>
+
+        <section id="setup" class="doc-section">
+          <div class="section-kicker">Setup</div>
+          <h2>Run locally</h2>
+          <div class="code-block">
+            <pre>git clone https://github.com/Kaybee973/Task-Flow
+cd Task-Flow
+go run main.go
+
+# then open:
+# http://localhost:8080/dashboard</pre>
+          </div>
+
+          <div class="info-grid">
+            <div class="mini-card">
+              <div class="mini-card-title">Default behavior</div>
+              <p>Runs with an in-memory task store, which is ideal for local demos and early validation.</p>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-title">PostgreSQL</div>
+              <p>Set DATABASE_URL to enable durable, production-style storage for task persistence.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="roadmap" class="doc-section">
+          <div class="section-kicker">Roadmap</div>
+          <h2>Planned evolution</h2>
+          <ul class="bullet-list">
+            <li>Real user auth with secure session management and password hashing</li>
+            <li>Database-backed users, projects, and team permissions</li>
+            <li>Real-time task updates and notifications</li>
+            <li>Enhanced moderation, filtering, and search</li>
+            <li>Expanded payment integrations and client SDKs</li>
+            <li>Production readiness improvements around deployment and observability</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
