@@ -11,14 +11,12 @@
 <body>
   <nav class="navbar">
     <div class="container">
-      <a href="/dashboard" class="navbar-brand"><span>Task</span>Flow</a>
+      <a href="/docs" class="navbar-brand"><span>Task</span>Flow</a>
       <div class="navbar-nav">
-        <a href="/dashboard" class="nav-link">Dashboard</a>
         <a href="/docs" class="nav-link active">Docs</a>
-        <a href="/healthz" class="nav-link">Health</a>
       </div>
       <div style="display:flex; align-items:center; gap:.75rem;">
-        <div class="nav-avatar" title="Profile" onclick="location.href='/profile'">TF</div>
+        <div class="nav-avatar" title="Profile" onclick="location.href='/login'">TF</div>
         <form method="POST" action="/logout" style="margin:0;">
           <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
         </form>
@@ -36,7 +34,7 @@
           secure workflows, and programmable integrations for tools and autonomous agents.
         </p>
         <div class="docs-actions">
-          <a href="/dashboard" class="btn btn-primary">Open dashboard</a>
+          <a href="/login" class="btn btn-primary">Open app</a>
           <a href="#architecture" class="btn btn-ghost">Explore architecture</a>
         </div>
       </div>
